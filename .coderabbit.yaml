@@ -1,0 +1,25 @@
+# Revisión automática de cada Pull Request (https://coderabbit.ai)
+language: "es-ES"
+reviews:
+  profile: "chill"
+  high_level_summary: true
+  request_changes_workflow: false
+  auto_review:
+    enabled: true
+    base_branches: ["develop"]
+  path_instructions:
+    - path: "src/main/java/pe/uni/so/**"
+      instructions: |
+        Proyecto académico de Sistemas Operativos (UNI, SW407). Revisa en español y con foco en:
+        - El motor (todo excepto el paquete ui) no debe importar JavaFX ni nada de la interfaz.
+        - Solo existen 5 estados y 6 transiciones; todo cambio de estado pasa por Pcb.pasarA().
+        - Convenciones del profesor: desempate por llegada más antigua y luego menor PID; un empate
+          con el proceso en ejecución no expropia; en Round Robin se respeta el orden de inserción.
+        - Métricas: retorno = fin - llegada; respuesta = primera CPU - llegada; espera = tiempo en listos.
+        - Usar excepciones propias (paquete excepciones), no RuntimeException genérica.
+        - Código simple: sin patrones o capas que no resuelvan un requisito concreto.
+    - path: "src/test/java/**"
+      instructions: |
+        Cada prueba debe tener @DisplayName que empiece con los códigos de requisito, por ejemplo
+        "[P5][P7] Taller ej. 23 ...". Si la prueba reproduce un ejercicio del profesor, los valores
+        esperados deben ser exactamente los de su solución.

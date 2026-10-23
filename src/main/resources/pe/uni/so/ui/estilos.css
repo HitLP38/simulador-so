@@ -1,0 +1,19 @@
+/* Tema del simulador: se edita aquí, igual que CSS web pero con prefijo -fx- */
+.root {
+    -fx-font-family: "Segoe UI", "Inter", sans-serif;
+    -fx-font-size: 14px;
+    -fx-background-color: #0b1120;
+}
+.barra { -fx-alignment: center-left; -fx-padding: 0 0 12 0; }
+.label { -fx-text-fill: #e2e8f0; }
+.button {
+    -fx-background-color: #22d3ee;
+    -fx-text-fill: #0b1120;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8;
+}
+.salida, .salida .content {
+    -fx-control-inner-background: #111827;
+    -fx-text-fill: #e2e8f0;
+    -fx-font-family: "Consolas", monospace;
+}
