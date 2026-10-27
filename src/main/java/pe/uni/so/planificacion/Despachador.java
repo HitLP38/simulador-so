@@ -3,12 +3,13 @@ package pe.uni.so.planificacion;
 import java.util.ArrayList;
 import java.util.List;
 import pe.uni.so.excepciones.ParametroInvalidoException;
+import pe.uni.so.procesos.Colas;
 import pe.uni.so.procesos.Pcb;
 
 /**
- * [P8] Despachador: transfiere la CPU al proceso que eligió el planificador.
- * El planificador decide QUIÉN ejecuta; el despachador hace el cambio de contexto y su costo
- * no cuenta como tiempo útil (taller 2026-2, ej. 17 c).
+ * [P8] Despachador: transfiere la CPU al proceso que elige el planificador.
+ * El planificador (la política) decide QUIÉN ejecuta; el despachador hace el cambio de contexto
+ * sobre las colas reales y su costo no cuenta como tiempo útil (taller 2026-2, ej. 17 c).
  */
 public class Despachador {
     private final double costo;          // ms por despacho, incluido el inicial
@@ -22,15 +23,21 @@ public class Despachador {
     }
 
     /**
-     * Cambio de contexto en el orden del taller, ej. 10 b: primero se guarda el saliente y
-     * solo después se restaura el entrante. Devuelve el instante en que el entrante empieza a ejecutar.
+     * Cambio de contexto en el orden del taller, ej. 10 b. Si la CPU está ocupada, el proceso
+     * saliente se guarda y vuelve a listos (expropiación o fin de quantum); si quedó libre por
+     * bloqueo o finalización, solo se carga el entrante. Devuelve el instante en que el entrante
+     * empieza a ejecutar, o {@code t} sin costo si no hay a quién despachar.
      */
-    public double despachar(Pcb saliente, Pcb entrante, double t) {
+    public double despachar(Colas colas, PoliticaPlanificacion politica, double t) {
+        Pcb saliente = colas.enCpu();
+        if (saliente == null && colas.listos().isEmpty()) return t;
         if (saliente != null) {
             bitacora.add("1. Guardar el contexto de " + saliente + " en su PCB (PC = " + saliente.pc() + ")");
-            bitacora.add("2. Actualizar el estado de " + saliente + " y moverlo a su cola");
+            colas.expropiarEnCpu();
+            bitacora.add("2. Pasar " + saliente + " a Listo, al final de la cola de listos");
         }
-        bitacora.add("3. Confirmar a " + entrante + " como elegido por el planificador");
+        Pcb entrante = colas.despachar(politica);
+        bitacora.add("3. " + politica.nombre() + " eligió a " + entrante + "; pasa a Ejecutando");
         bitacora.add("4. Restaurar el contexto de " + entrante + " y reanudar en PC = " + entrante.pc());
         despachos++;
         return t + costo;
