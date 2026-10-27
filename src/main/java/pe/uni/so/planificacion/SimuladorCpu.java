@@ -2,6 +2,7 @@ package pe.uni.so.planificacion;
 
 import java.util.ArrayList;
 import java.util.List;
+import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.procesos.Estado;
 import pe.uni.so.procesos.Pcb;
 
@@ -21,8 +22,19 @@ public class SimuladorCpu {
         public double retornoMedio() { return Metricas.retornoMedio(procesos); }
         public double esperaMedia() { return Metricas.esperaMedia(procesos); }
         public double respuestaMedia() { return Metricas.respuestaMedia(procesos); }
-        public double utilizacionUtil() { return Metricas.utilizacionUtil(procesos, tiempoTotal); }
-        public double throughput() { return Metricas.throughput(procesos, tiempoTotal); }
+        /** Ventana por defecto: de 0 hasta que termina el último proceso. */
+        public double utilizacionUtil() { return utilizacionUtil(tiempoTotal); }
+        public double throughput() { return throughput(tiempoTotal); }
+
+        /** Ventana observada indicada (ej. 20: de 0 a 12 aunque el último termine en 10). */
+        public double utilizacionUtil(int ventana) { return Metricas.utilizacionUtil(procesos, validar(ventana)); }
+        public double throughput(int ventana) { return Metricas.throughput(procesos, validar(ventana)); }
+
+        private int validar(int ventana) {
+            if (ventana < tiempoTotal)
+                throw new ParametroInvalidoException("La ventana (" + ventana + ") no cubre la simulación (" + tiempoTotal + ")");
+            return ventana;
+        }
     }
 
     public SimuladorCpu(PoliticaPlanificacion politica, List<Pcb> procesos) {

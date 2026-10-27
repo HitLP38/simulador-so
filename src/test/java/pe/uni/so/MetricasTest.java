@@ -95,4 +95,13 @@ class MetricasTest {
         assertThrows(ParametroInvalidoException.class, () -> Metricas.utilizacionUtil(List.of(), 0));
         assertThrows(ParametroInvalidoException.class, () -> Metricas.throughput(List.of(), -1));
     }
+
+    @Test @DisplayName("[P17] El resultado acepta una ventana observada mayor que la simulación")
+    void ventanaObservada() {
+        List<Pcb> ps = List.of(new Pcb(1, 0, 4), new Pcb(2, 1, 3), new Pcb(3, 2, 1));
+        SimuladorCpu.Resultado r = new SimuladorCpu(new Fcfs(), ps).ejecutar();   // termina en t = 8
+        assertEquals(80.0, r.utilizacionUtil(10), EPS);                            // 8 de CPU útil en 10
+        assertEquals(0.3, r.throughput(10), EPS);                                  // 3 procesos en 10
+        assertThrows(ParametroInvalidoException.class, () -> r.utilizacionUtil(7));
+    }
 }
