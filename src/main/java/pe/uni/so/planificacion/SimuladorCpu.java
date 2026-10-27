@@ -18,9 +18,11 @@ public class SimuladorCpu {
     private int transiciones, desalojos;
 
     public record Resultado(List<Pcb> procesos, int tiempoTotal, int transiciones, int desalojos, String gantt) {
-        public double retornoMedio() { return procesos.stream().mapToInt(Pcb::retorno).average().orElse(0); }
-        public double esperaMedia() { return procesos.stream().mapToInt(Pcb::espera).average().orElse(0); }
-        public double respuestaMedia() { return procesos.stream().mapToInt(Pcb::respuesta).average().orElse(0); }
+        public double retornoMedio() { return Metricas.retornoMedio(procesos); }
+        public double esperaMedia() { return Metricas.esperaMedia(procesos); }
+        public double respuestaMedia() { return Metricas.respuestaMedia(procesos); }
+        public double utilizacionUtil() { return Metricas.utilizacionUtil(procesos, tiempoTotal); }
+        public double throughput() { return Metricas.throughput(procesos, tiempoTotal); }
     }
 
     public SimuladorCpu(PoliticaPlanificacion politica, List<Pcb> procesos) {
