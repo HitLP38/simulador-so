@@ -26,9 +26,14 @@ public class SimuladorCpu {
         public double utilizacionUtil() { return utilizacionUtil(tiempoTotal); }
         public double throughput() { return throughput(tiempoTotal); }
 
-        /** Ventana observada indicada (ej. 20: de 0 a 12 aunque el último termine en 10). */
+        /**
+         * Ventana observada indicada (ej. 20: de 0 a 12 aunque el último termine en 10).
+         * La utilización suma la CPU de toda la simulación, así que la ventana debe cubrirla.
+         */
         public double utilizacionUtil(int ventana) { return Metricas.utilizacionUtil(procesos, validar(ventana)); }
-        public double throughput(int ventana) { return Metricas.throughput(procesos, validar(ventana)); }
+
+        /** Admite ventanas parciales: solo cuenta los procesos que terminaron dentro de ella. */
+        public double throughput(int ventana) { return Metricas.throughput(procesos, ventana); }
 
         private int validar(int ventana) {
             if (ventana < tiempoTotal)

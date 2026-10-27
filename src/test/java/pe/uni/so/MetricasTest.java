@@ -103,5 +103,6 @@ class MetricasTest {
         assertEquals(80.0, r.utilizacionUtil(10), EPS);                            // 8 de CPU útil en 10
         assertEquals(0.3, r.throughput(10), EPS);                                  // 3 procesos en 10
         assertThrows(ParametroInvalidoException.class, () -> r.utilizacionUtil(7));
+        assertEquals(0.25, r.throughput(4), EPS);                                  // ventana parcial: solo P1 terminó
     }
 }
