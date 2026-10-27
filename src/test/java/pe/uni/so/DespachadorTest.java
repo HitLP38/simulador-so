@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.planificacion.Despachador;
 import pe.uni.so.procesos.Pcb;
 
@@ -61,6 +62,8 @@ class DespachadorTest {
         List<String> b = d.bitacora();
         assertEquals(4, b.size());
         assertTrue(b.get(0).startsWith("1. Guardar el contexto de P1"));
+        assertTrue(b.get(1).startsWith("2. Actualizar el estado de P1"));
+        assertTrue(b.get(2).startsWith("3. Confirmar a P2"));
         assertTrue(b.get(3).startsWith("4. Restaurar el contexto de P2"));
     }
 
@@ -72,8 +75,10 @@ class DespachadorTest {
         assertEquals(1, d.despachos());
     }
 
-    @Test @DisplayName("[P8] Un costo de despacho negativo se rechaza")
-    void costoNegativo() {
-        assertThrows(IllegalArgumentException.class, () -> new Despachador(-0.1));
+    @Test @DisplayName("[P8] Un costo de despacho negativo, NaN o infinito se rechaza")
+    void costoInvalido() {
+        assertThrows(ParametroInvalidoException.class, () -> new Despachador(-0.1));
+        assertThrows(ParametroInvalidoException.class, () -> new Despachador(Double.NaN));
+        assertThrows(ParametroInvalidoException.class, () -> new Despachador(Double.POSITIVE_INFINITY));
     }
 }

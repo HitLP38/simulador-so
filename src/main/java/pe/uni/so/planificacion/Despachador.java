@@ -2,6 +2,7 @@ package pe.uni.so.planificacion;
 
 import java.util.ArrayList;
 import java.util.List;
+import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.procesos.Pcb;
 
 /**
@@ -15,7 +16,8 @@ public class Despachador {
     private final List<String> bitacora = new ArrayList<>();
 
     public Despachador(double costo) {
-        if (costo < 0) throw new IllegalArgumentException("El costo del despacho no puede ser negativo");
+        if (!Double.isFinite(costo) || costo < 0)
+            throw new ParametroInvalidoException("Costo de despacho inválido: " + costo + " ms (debe ser finito y >= 0)");
         this.costo = costo;
     }
 
