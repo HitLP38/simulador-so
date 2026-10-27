@@ -107,4 +107,17 @@ class ColasTest {
         assertEquals(1, c.trabajos().size());
         assertEquals(1, c.listos().size());
     }
+
+    @Test @DisplayName("[P1][P4] Admitir un proceso bloqueado se rechaza sin duplicarlo")
+    void admitirBloqueado() {
+        Colas c = new Colas();
+        Pcb p = new Pcb(1, 0, 5);
+        c.admitir(p);
+        c.despachar(new Fcfs());
+        c.bloquearEnCpu(Dispositivo.DISCO);
+        assertThrows(TransicionInvalidaException.class, () -> c.admitir(p));
+        assertEquals(1, c.trabajos().size());
+        assertEquals(0, c.listos().size());
+        assertEquals(Estado.BLOQUEADO, p.estado());
+    }
 }

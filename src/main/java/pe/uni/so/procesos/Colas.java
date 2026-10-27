@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import pe.uni.so.es.Dispositivo;
 import pe.uni.so.excepciones.EventoInvalidoException;
+import pe.uni.so.excepciones.TransicionInvalidaException;
 import pe.uni.so.planificacion.PoliticaPlanificacion;
 
 /**
@@ -26,8 +27,9 @@ public class Colas {
         for (Dispositivo d : Dispositivo.values()) dispositivos.put(d, new ArrayDeque<>());
     }
 
-    /** Ingreso: el proceso pasa a Listo y entra a trabajos y a listos (momento d). */
+    /** Ingreso: solo un proceso Nuevo pasa a Listo y entra a trabajos y a listos (momento d). */
     public void admitir(Pcb p) {
+        if (p.estado() != Estado.NUEVO) throw new TransicionInvalidaException(p.pid, p.estado(), Estado.LISTO);
         p.pasarA(Estado.LISTO);
         trabajos.add(p);
         listos.add(p);
