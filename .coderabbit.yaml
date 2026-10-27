@@ -4,6 +4,9 @@ reviews:
   profile: "chill"
   high_level_summary: true
   request_changes_workflow: false
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
   auto_review:
     enabled: true
     base_branches: ["develop"]
