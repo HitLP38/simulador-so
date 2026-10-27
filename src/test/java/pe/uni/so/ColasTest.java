@@ -2,12 +2,15 @@ package pe.uni.so;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import pe.uni.so.es.Dispositivo;
+import pe.uni.so.excepciones.EventoInvalidoException;
+import pe.uni.so.excepciones.TransicionInvalidaException;
 import pe.uni.so.planificacion.Fcfs;
 import pe.uni.so.procesos.Colas;
 import pe.uni.so.procesos.Estado;
@@ -75,5 +78,33 @@ class ColasTest {
         Colas c = new Colas();
         assertEquals(5, Dispositivo.values().length);
         for (Dispositivo d : Dispositivo.values()) assertEquals(0, c.cola(d).size());
+    }
+
+    @Test @DisplayName("[P4][P6] Expropiar devuelve el proceso en CPU al final de listos")
+    void expropiar() {
+        Colas c = estadoInicial();                      // P1 en CPU; listos [P2, P3]
+        c.expropiarEnCpu();
+        verificar(c, "", "P2,P3,P1", "P4", "P5");
+        c.despachar(fcfs);
+        verificar(c, "P2", "P3,P1", "P4", "P5");
+    }
+
+    @Test @DisplayName("[P4] Eventos sin proceso lanzan EventoInvalidoException")
+    void eventosSinProceso() {
+        Colas c = new Colas();
+        assertThrows(EventoInvalidoException.class, () -> c.terminarES(Dispositivo.DISCO));
+        assertThrows(EventoInvalidoException.class, c::terminarEnCpu);
+        assertThrows(EventoInvalidoException.class, c::expropiarEnCpu);
+        assertThrows(EventoInvalidoException.class, () -> c.bloquearEnCpu(Dispositivo.RED));
+    }
+
+    @Test @DisplayName("[P1][P4] Admitir dos veces el mismo proceso no altera las colas")
+    void admitirDosVeces() {
+        Colas c = new Colas();
+        Pcb p = new Pcb(1, 0, 5);
+        c.admitir(p);
+        assertThrows(TransicionInvalidaException.class, () -> c.admitir(p));
+        assertEquals(1, c.trabajos().size());
+        assertEquals(1, c.listos().size());
     }
 }
