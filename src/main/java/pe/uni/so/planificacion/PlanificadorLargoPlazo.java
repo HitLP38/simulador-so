@@ -5,6 +5,7 @@ import java.util.Set;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.procesos.Colas;
+import pe.uni.so.procesos.Estado;
 import pe.uni.so.procesos.Pcb;
 
 /**
@@ -47,11 +48,15 @@ public class PlanificadorLargoPlazo {
         usada += p.memoria;
     }
 
-    /** Libera la memoria de un proceso que terminó o que fue suspendido. */
+    /** Libera la memoria de un proceso que terminó o que fue suspendido; nunca la de uno que aún puede ejecutar. */
     public void liberar(Pcb p) {
+        if (p.estado() != Estado.TERMINADO && !p.suspendido())
+            throw new EventoInvalidoException("No se libera la memoria de " + p + ": está " + p.estado() + " y no suspendido");
         if (!residentes.remove(p)) throw new EventoInvalidoException(p + " no está residente");
         usada -= p.memoria;
     }
+
+    public boolean residente(Pcb p) { return residentes.contains(p); }
 
     public int usada() { return usada; }
     public int libre() { return memoriaTotal - usada; }

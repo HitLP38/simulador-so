@@ -1,6 +1,7 @@
 package pe.uni.so.procesos;
 
 import pe.uni.so.excepciones.EventoInvalidoException;
+import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.excepciones.TransicionInvalidaException;
 
 /**
@@ -21,6 +22,7 @@ public class Pcb {
     private boolean suspendido;      // [P5] en swap: atributo de Listo o Bloqueado, no un sexto estado
 
     public Pcb(int pid, int llegada, int burst, int prioridad, int memoria) {
+        if (memoria < 0) throw new ParametroInvalidoException("P" + pid + ": memoria negativa (" + memoria + ")");
         this.pid = pid; this.llegada = llegada; this.burst = burst; this.prioridad = prioridad;
         this.memoria = memoria;
         this.restante = burst;

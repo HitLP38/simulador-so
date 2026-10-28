@@ -1,5 +1,6 @@
 package pe.uni.so.planificacion;
 
+import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.procesos.Pcb;
 
 /**
@@ -13,6 +14,7 @@ public class PlanificadorMedianoPlazo {
     public PlanificadorMedianoPlazo(PlanificadorLargoPlazo memoria) { this.memoria = memoria; }
 
     public void suspender(Pcb p) {
+        if (!memoria.residente(p)) throw new EventoInvalidoException(p + " no fue admitido por este planificador");
         p.suspender();
         memoria.liberar(p);
     }

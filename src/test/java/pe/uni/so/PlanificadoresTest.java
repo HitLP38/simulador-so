@@ -83,11 +83,15 @@ class PlanificadoresTest {
 
         assertFalse(mediano.reanudar(b));                     // 300 > 124
         assertTrue(b.suspendido());
-        largo.liberar(d);                                     // D termina: quedan 524
+        assertThrows(EventoInvalidoException.class, () -> largo.liberar(d));   // D aún puede ejecutar
+
+        assertEquals(a, c.despachar(new Fcfs()));             // A termina: quedan 424
+        c.terminarEnCpu();
+        largo.liberar(a);
         assertTrue(mediano.reanudar(b));
         assertFalse(b.suspendido());
-        assertEquals(800, largo.usada());
-        assertFalse(largo.admitir(e, c));                     // 300 > 224
+        assertEquals(900, largo.usada());                     // B 300 + C 200 + D 400
+        assertFalse(largo.admitir(e, c));                     // 300 > 124
     }
 
     @Test @DisplayName("[P5] El grado de multiprogramación limita la admisión aunque sobre memoria")
@@ -116,6 +120,22 @@ class PlanificadoresTest {
         assertThrows(EventoInvalidoException.class, () -> mediano.suspender(a));
         assertThrows(EventoInvalidoException.class, () -> largo.liberar(a));   // ya no está residente
         assertEquals(100, largo.usada());
+    }
+
+    @Test @DisplayName("[P5] Solo se suspende un proceso admitido por el planificador")
+    void suspenderNoAdmitido() {
+        Colas c = new Colas();
+        PlanificadorLargoPlazo largo = new PlanificadorLargoPlazo(1024);
+        PlanificadorMedianoPlazo mediano = new PlanificadorMedianoPlazo(largo);
+        Pcb x = proceso(1, 100);
+        c.admitir(x);                                         // entró a listos sin pasar por largo plazo
+        assertThrows(EventoInvalidoException.class, () -> mediano.suspender(x));
+        assertFalse(x.suspendido());
+    }
+
+    @Test @DisplayName("[P5] Una memoria negativa se rechaza al crear el proceso")
+    void memoriaNegativa() {
+        assertThrows(ParametroInvalidoException.class, () -> new Pcb(1, 0, 5, 0, -300));
     }
 
     @Test @DisplayName("[P5] Un proceso más grande que toda la memoria se rechaza")
