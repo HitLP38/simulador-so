@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.planificacion.Despachador;
 import pe.uni.so.planificacion.Fcfs;
+import pe.uni.so.planificacion.PlanificadorLargoPlazo;
+import pe.uni.so.planificacion.PlanificadorMedianoPlazo;
 import pe.uni.so.procesos.Colas;
 import pe.uni.so.procesos.Estado;
 import pe.uni.so.procesos.Pcb;
@@ -102,6 +104,20 @@ class DespachadorTest {
         assertEquals(4.0, d.despachar(c, new Fcfs(), 4), EPS);
         assertNull(c.enCpu());
         assertEquals(0, d.despachos());
+    }
+
+    @Test @DisplayName("[P5][P8] Si solo hay procesos suspendidos no hay despacho ni costo")
+    void soloSuspendidos() {
+        Colas c = new Colas();
+        PlanificadorLargoPlazo largo = new PlanificadorLargoPlazo(1024);
+        Pcb p = new Pcb(1, 0, 2, 0, 100);
+        largo.admitir(p, c);
+        new PlanificadorMedianoPlazo(largo).suspender(p);
+        Despachador d = new Despachador(0.5);
+        assertEquals(3.0, d.despachar(c, new Fcfs(), 3), EPS);
+        assertNull(c.enCpu());
+        assertEquals(0, d.despachos());
+        assertTrue(d.bitacora().isEmpty());
     }
 
     @Test @DisplayName("[P8] Un costo de despacho negativo, NaN o infinito se rechaza")

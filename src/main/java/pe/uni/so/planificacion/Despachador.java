@@ -37,6 +37,7 @@ public class Despachador {
             bitacora.add("2. Pasar " + saliente + " a Listo, al final de la cola de listos");
         }
         Pcb entrante = colas.despachar(politica);
+        if (entrante == null) return t;                  // solo quedan procesos suspendidos
         bitacora.add("3. " + politica.nombre() + " eligió a " + entrante + "; pasa a Ejecutando");
         bitacora.add("4. Restaurar el contexto de " + entrante + " y reanudar en PC = " + entrante.pc());
         despachos++;

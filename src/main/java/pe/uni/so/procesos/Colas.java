@@ -35,10 +35,11 @@ public class Colas {
         listos.add(p);
     }
 
-    /** Despacho: la política elige de listos y el proceso pasa a Ejecutando. */
+    /** Despacho: la política elige entre los listos residentes y el proceso pasa a Ejecutando. */
     public Pcb despachar(PoliticaPlanificacion politica) {
-        if (enCpu != null || listos.isEmpty()) return enCpu;
-        Pcb elegido = politica.elegir(listos);
+        List<Pcb> candidatos = listos.stream().filter(p -> !p.suspendido()).toList();
+        if (enCpu != null || candidatos.isEmpty()) return enCpu;
+        Pcb elegido = politica.elegir(candidatos);
         elegido.pasarA(Estado.EJECUTANDO);
         listos.remove(elegido);
         enCpu = elegido;
