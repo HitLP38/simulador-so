@@ -28,6 +28,7 @@ GitHub Actions corre `mvn verify` y la matriz de trazabilidad en cada push y PR,
 ```text
 src/main/java/pe/uni/so/
   procesos/        Estado (5 estados, 6 transiciones), Pcb
+  motor/           Kernel (tick a tick, los 5 momentos a–e de invocación del planificador), Momento
   planificacion/   PoliticaPlanificacion (Strategy): Fcfs, Sjf, Srtf, Prioridad, RoundRobin; SimuladorCpu
   memoria/         EstrategiaAsignacion (Strategy): primer, mejor y peor ajuste; MapaBits
   interrupciones/  TipoInterrupcion (tabla de vectores)
