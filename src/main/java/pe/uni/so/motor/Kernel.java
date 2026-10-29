@@ -61,11 +61,18 @@ public class Kernel {
         t++;
     }
 
-    /** Corre hasta que todos terminen. Falla si la CPU queda ociosa para siempre. */
+    /**
+     * Corre hasta que todos terminen. Falla si la CPU queda ociosa para siempre: nadie listo y
+     * ninguna llegada futura (un proceso que ya llegó y no cabe tampoco cuenta, porque la memoria
+     * la retienen procesos bloqueados o suspendidos que aquí nadie despierta).
+     */
     public void ejecutarTodo() {
         while (!terminado()) {
-            if (colas.enCpu() == null && listosResidentes().isEmpty() && porLlegar.isEmpty())
-                throw new EventoInvalidoException("t=" + t + ": nadie puede ejecutar; quedan procesos bloqueados o suspendidos");
+            momentoD();                                    // intenta admitir antes de decidir
+            boolean ociosa = colas.enCpu() == null && listosResidentes().isEmpty();
+            boolean llegadaFutura = !porLlegar.isEmpty() && porLlegar.get(0).llegada > t;
+            if (ociosa && !llegadaFutura)
+                throw new EventoInvalidoException("t=" + t + ": nadie puede ejecutar; quedan procesos bloqueados, suspendidos o sin memoria");
             paso();
         }
     }

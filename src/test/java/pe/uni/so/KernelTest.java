@@ -151,4 +151,15 @@ class KernelTest {
         k.pedirES(Dispositivo.IMPRESORA);
         assertThrows(EventoInvalidoException.class, k::ejecutarTodo);
     }
+
+    @Test @DisplayName("[P5][P6] Si el que llegó no cabe porque un bloqueado retiene la memoria, la simulación avisa")
+    void llegadaSinMemoriaConResidenteBloqueado() {
+        PlanificadorLargoPlazo largo = new PlanificadorLargoPlazo(100);
+        Pcb p1 = new Pcb(1, 0, 3, 0, 60), p2 = new Pcb(2, 0, 2, 0, 60);
+        Kernel k = pasos(new Kernel(new Fcfs(), List.of(p1, p2), largo), 1);
+        k.pedirES(Dispositivo.DISCO);                      // P1 retiene 60 de 100; P2 (60) no cabe
+
+        assertThrows(EventoInvalidoException.class, k::ejecutarTodo);
+        assertEquals(Estado.NUEVO, p2.estado());
+    }
 }
