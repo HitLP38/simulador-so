@@ -10,6 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import pe.uni.so.es.Dispositivo;
 import pe.uni.so.excepciones.EventoInvalidoException;
+import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.motor.Kernel;
 import pe.uni.so.motor.Momento;
 import pe.uni.so.planificacion.*;
@@ -137,6 +138,12 @@ class KernelTest {
         k.paso();
         assertEquals(p2, k.colas().enCpu());
         assertEquals(2, p2.respuesta());
+    }
+
+    @Test @DisplayName("[P3][P6] Un burst de 0 o negativo se rechaza al crear el proceso")
+    void burstInvalido() {
+        assertThrows(ParametroInvalidoException.class, () -> new Pcb(1, 0, 0));
+        assertThrows(ParametroInvalidoException.class, () -> new Pcb(2, 0, -3));
     }
 
     @Test @DisplayName("[P6] Sin proceso en la CPU no se puede pedir E/S")
