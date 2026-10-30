@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import pe.uni.so.es.AccionTeclado;
 import pe.uni.so.es.Dispositivo;
 import pe.uni.so.es.GestorES;
 import pe.uni.so.es.SolicitudES;
@@ -14,6 +15,7 @@ import pe.uni.so.interrupciones.TipoInterrupcion;
 import pe.uni.so.planificacion.Despachador;
 import pe.uni.so.planificacion.PlanificadorLargoPlazo;
 import pe.uni.so.planificacion.PoliticaPlanificacion;
+import pe.uni.so.procesos.CodigoError;
 import pe.uni.so.procesos.Colas;
 import pe.uni.so.procesos.Estado;
 import pe.uni.so.procesos.Pcb;
@@ -145,6 +147,26 @@ public class Kernel {
         registrar(t, Momento.A, p, "pide E/S a " + d + " (manual) y espera en su cola");
     }
 
+    /**
+     * [E9] El usuario pulsa una tecla para el proceso que espera el teclado (el primero de su cola).
+     * La tecla completa la lectura: el teclado levanta su IRQ1 y el proceso vuelve a Listo en el
+     * próximo tick. Con C, además, queda una señal CANCELAR que se entrega cuando el proceso vuelve
+     * a la CPU: ahí termina con E04 sin ejecutar otra instrucción (los 5 estados se respetan: un
+     * proceso solo termina desde Ejecutando). Devuelve false, sin efecto, si nadie está leyendo
+     * del teclado o si la tecla llega tarde (el plazo ya venció y la lectura terminó sola).
+     */
+    public boolean teclado(char tecla) {
+        AccionTeclado accion = AccionTeclado.de(tecla);
+        List<Pcb> cola = colas.cola(Dispositivo.TECLADO);
+        if (cola.isEmpty()) return false;
+        SolicitudES lectura = gestorES.solicitud(cola.get(0));
+        if (lectura == null || lectura.operacion() != SolicitudES.Operacion.LEER) return false;   // no es una lectura activa
+        if (gestorES.servicioTerminado(Dispositivo.TECLADO)) return false;                        // tecla tardía: continúa
+        if (accion == AccionTeclado.CANCELAR) cola.get(0).cancelar();
+        gestorES.forzarFin(Dispositivo.TECLADO);
+        return true;
+    }
+
     /** (b) Ejecutando → Listo, por fin de quantum o porque otro lo expropia. */
     private void momentoB(Pcb saliente, String motivo) {
         registrar(t, Momento.B, saliente, motivo + "; vuelve al final de listos");
@@ -156,7 +178,8 @@ public class Kernel {
         modo = Modo.KERNEL;                                // IRQ del dispositivo
         p.completarPedidoES();
         gestorES.completar(p);
-        registrar(t, Momento.C, p, "IRQ " + ControladorInterrupciones.irq(d.interrupcion) + ": terminó su E/S en " + d + " y pasa a Listo");
+        registrar(t, Momento.C, p, "IRQ " + ControladorInterrupciones.irq(d.interrupcion) + ": terminó su E/S en " + d + " y pasa a Listo"
+                + (p.cancelacionPendiente() ? " con la señal CANCELAR pendiente" : ""));
         revisarExpropiacion = true;
     }
 
@@ -179,6 +202,17 @@ public class Kernel {
         modo = Modo.KERNEL;                                // el fin del proceso entra al kernel (exit)
         if (largoPlazo != null && largoPlazo.residente(p)) largoPlazo.liberar(p);
         registrar(t + 1, Momento.E, p, "terminó y libera la CPU");
+    }
+
+    /** (e) [E9][P9] Al volver a la CPU recibe la señal CANCELAR: termina con E04 en el instante t. */
+    private void terminarCancelado(Pcb p) {
+        p.marcarInicio(t);
+        p.marcarFin(t);
+        p.registrarError(CodigoError.E04);
+        colas.terminarEnCpu();
+        modo = Modo.KERNEL;
+        if (largoPlazo != null && largoPlazo.residente(p)) largoPlazo.liberar(p);
+        registrar(t, Momento.E, p, "recibe la señal del teclado: cancelado por el usuario (E04)");
     }
 
     // ---------------------------------------------------------------- planificación
@@ -205,6 +239,11 @@ public class Kernel {
         if (!cambiar) return;
         despachador.despachar(colas, politica, t);         // guarda el saliente y carga el entrante
         Pcb entrante = colas.enCpu();
+        while (entrante != null && entrante.cancelacionPendiente()) {   // [E9] entrega de la señal
+            terminarCancelado(entrante);
+            despachador.despachar(colas, politica, t);
+            entrante = colas.enCpu();
+        }
         if (entrante != null) { entrante.marcarInicio(t); usado = 0; quantumDespacho = politica.quantum(); }
     }
 
