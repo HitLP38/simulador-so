@@ -72,6 +72,31 @@ class TecladoTest {
         assertEquals(Estado.TERMINADO, p1.estado());
     }
 
+    @Test @DisplayName("[E9] Una C que llega después del plazo es tardía: no cancela y el proceso continúa")
+    void teclaTardia() {
+        Pcb p1 = new Pcb(1, 0, 2), p2 = new Pcb(2, 0, 5);
+        Kernel k = leyendo(new Kernel(new Fcfs(), List.of(p1, p2)), 1);   // la lectura vence al final de t = 1
+        assertFalse(k.teclado('C'));                                         // t = 2: la IRQ ya está pendiente
+        k.ejecutarTodo();
+        assertNull(p1.error());
+        assertEquals(2, p1.cpu());
+    }
+
+    @Test @DisplayName("[E9] La señal solo vale para una lectura de teclado registrada (no escritura ni pedido manual)")
+    void soloLecturaActiva() {
+        Pcb p1 = new Pcb(1, 0, 2), p2 = new Pcb(2, 0, 5);
+        Kernel k = new Kernel(new Fcfs(), List.of(p1, p2));
+        k.paso();
+        k.llamadaSistema(new SolicitudES(1, Dispositivo.TECLADO, Operacion.ESCRIBIR, 0x200, 1, 4));
+        assertFalse(k.teclado('\n'));
+        assertFalse(p1.cancelacionPendiente());
+
+        Kernel manual = new Kernel(new Fcfs(), List.of(new Pcb(3, 0, 2), new Pcb(4, 0, 2)));
+        manual.paso();
+        manual.pedirES(Dispositivo.TECLADO);                                 // atajo sin bloque de petición
+        assertFalse(manual.teclado('C'));
+    }
+
     @Test @DisplayName("[E9] Una tecla sin nadie esperando se ignora; solo C y Enter son señales válidas")
     void teclasValidas() {
         Kernel k = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 2)));

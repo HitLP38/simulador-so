@@ -152,12 +152,16 @@ public class Kernel {
      * La tecla completa la lectura: el teclado levanta su IRQ1 y el proceso vuelve a Listo en el
      * próximo tick. Con C, además, queda una señal CANCELAR que se entrega cuando el proceso vuelve
      * a la CPU: ahí termina con E04 sin ejecutar otra instrucción (los 5 estados se respetan: un
-     * proceso solo termina desde Ejecutando). Devuelve false si nadie espera el teclado.
+     * proceso solo termina desde Ejecutando). Devuelve false, sin efecto, si nadie está leyendo
+     * del teclado o si la tecla llega tarde (el plazo ya venció y la lectura terminó sola).
      */
     public boolean teclado(char tecla) {
         AccionTeclado accion = AccionTeclado.de(tecla);
         List<Pcb> cola = colas.cola(Dispositivo.TECLADO);
         if (cola.isEmpty()) return false;
+        SolicitudES lectura = gestorES.solicitud(cola.get(0));
+        if (lectura == null || lectura.operacion() != SolicitudES.Operacion.LEER) return false;   // no es una lectura activa
+        if (gestorES.servicioTerminado(Dispositivo.TECLADO)) return false;                        // tecla tardía: continúa
         if (accion == AccionTeclado.CANCELAR) cola.get(0).cancelar();
         gestorES.forzarFin(Dispositivo.TECLADO);
         return true;
