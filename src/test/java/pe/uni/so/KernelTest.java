@@ -186,6 +186,25 @@ class KernelTest {
         assertTrue(k.despachador().bitacora().stream().anyMatch(l -> l.contains("modo usuario")));
     }
 
+    @Test @DisplayName("[P8] Al terminar el último proceso la CPU queda en modo KERNEL")
+    void modoAlTerminar() {
+        Kernel k = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 1)));
+        k.paso();                                              // ejecuta su única instrucción y termina
+        assertNull(k.colas().enCpu());
+        assertEquals(Modo.KERNEL, k.modo());
+    }
+
+    @Test @DisplayName("[P7] Un proceso solo conserva su quantum aunque se cambie; el nuevo rige en el siguiente despacho")
+    void quantumSoloHastaElSiguienteDespacho() {
+        RoundRobin rr = new RoundRobin(2);
+        Kernel k = pasos(new Kernel(rr, List.of(new Pcb(1, 0, 6), new Pcb(2, 3, 4))), 1);
+        rr.setQuantum(3);
+        k.ejecutarTodo();
+        // P1 sigue con q = 2: corta en t = 4 (P2 ya llegó en t = 3); desde ahí cada despacho usa q = 3
+        assertEquals("1 1 1 1 2 2 2 1 1 2", k.gantt());
+        assertTrue(k.eventos(Momento.B).get(0).detalle().contains("quantum de 2"));
+    }
+
     @Test @DisplayName("[P3] El Kernel lleva en la PCB el tiempo bloqueado y el quantum restante")
     void camposQueLlevaElKernel() {
         Pcb p1 = new Pcb(1, 0, 3), p2 = new Pcb(2, 0, 4);
@@ -201,6 +220,8 @@ class KernelTest {
     void burstInvalido() {
         assertThrows(ParametroInvalidoException.class, () -> new Pcb(1, 0, 0));
         assertThrows(ParametroInvalidoException.class, () -> new Pcb(2, 0, -3));
+        assertThrows(ParametroInvalidoException.class, () -> new Pcb(3, 0, Pcb.BURST_MAXIMO + 1));   // no cabe en 16 bits
+        assertEquals(0xFFFF_FFFF, new Pcb(4, 0, Pcb.BURST_MAXIMO).leer(pe.uni.so.procesos.CampoPcb.BURST));
     }
 
     @Test @DisplayName("[P6] Sin proceso en la CPU no se puede pedir E/S")

@@ -12,6 +12,9 @@ import pe.uni.so.excepciones.TransicionInvalidaException;
 public class Pcb {
     public enum Tipo { USUARIO, SISTEMA }
 
+    /** [P3] El campo BURST guarda total y restante en 16 bits cada uno. */
+    public static final int BURST_MAXIMO = 0xFFFF;
+
     public final int pid;
     public final int llegada;
     public final int burst;
@@ -29,7 +32,8 @@ public class Pcb {
     private boolean suspendido;      // [P5] en swap: atributo de Listo o Bloqueado, no un sexto estado
 
     public Pcb(int pid, int llegada, int burst, int prioridad, int memoria) {
-        if (burst <= 0) throw new ParametroInvalidoException("P" + pid + ": el burst debe ser > 0 (" + burst + ")");
+        if (burst <= 0 || burst > BURST_MAXIMO)
+            throw new ParametroInvalidoException("P" + pid + ": el burst debe estar entre 1 y " + BURST_MAXIMO + " (" + burst + ")");
         if (memoria < 0) throw new ParametroInvalidoException("P" + pid + ": memoria negativa (" + memoria + ")");
         this.pid = pid; this.llegada = llegada; this.burst = burst; this.prioridad = prioridad;
         this.memoria = memoria;

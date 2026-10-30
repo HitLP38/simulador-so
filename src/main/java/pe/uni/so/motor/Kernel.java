@@ -124,6 +124,7 @@ public class Kernel {
     private void momentoE(Pcb p) {
         p.marcarFin(t + 1);
         colas.terminarEnCpu();
+        modo = Modo.KERNEL;                                // el fin del proceso entra al kernel (exit)
         if (largoPlazo != null && largoPlazo.residente(p)) largoPlazo.liberar(p);
         registrar(t + 1, Momento.E, p, "terminó y libera la CPU");
     }
@@ -137,7 +138,7 @@ public class Kernel {
         boolean cambiar = actual == null;                  // momentos a y e: CPU libre
 
         if (actual != null && usado >= quantumDespacho) {              // (b) timer
-            if (candidatos.isEmpty()) { usado = 0; quantumDespacho = politica.quantum(); }   // solo: nuevo quantum
+            if (candidatos.isEmpty()) usado = 0;                        // solo: sigue con el mismo quantum
             else { cambiar = true; momentoB(actual, "agotó su quantum de " + quantumDespacho); }
         } else if (actual != null && revisarExpropiacion && !candidatos.isEmpty()) {   // (c)(d)
             Pcb candidato = politica.elegir(candidatos);
