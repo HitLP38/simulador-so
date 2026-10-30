@@ -30,9 +30,9 @@ src/main/java/pe/uni/so/
   procesos/        Estado (5 estados, 6 transiciones), Pcb, CampoPcb (22 campos en memoria), Colas
   motor/           Kernel (tick a tick, los 5 momentos a–e de invocación del planificador), Momento, Modo
   planificacion/   PoliticaPlanificacion (Strategy): Fcfs, Sjf, Srtf, Prioridad, RoundRobin; SimuladorCpu
-  memoria/         EstrategiaAsignacion (Strategy): primer, mejor y peor ajuste; MapaBits
-  interrupciones/  TipoInterrupcion (tabla de vectores)
-  es/              Gestor de E/S, dispositivos y señales (pendiente)
+  memoria/         EspacioProceso (segmentos y direcciones lógicas), EstrategiaAsignacion (Strategy): primer, mejor y peor ajuste; MapaBits
+  interrupciones/  TipoInterrupcion (tabla de vectores), ControladorInterrupciones (PIC)
+  es/              Dispositivo, SolicitudES, GestorES, AccionTeclado (señal de teclado)
   aleatorio/       Lcg (generador con semilla), Ecuaciones
   excepciones/     Errores propios del simulador
   ui/              App JavaFX + estilos.css
@@ -48,7 +48,7 @@ herramientas/      trazabilidad.py
 4. El motor no importa nada de `ui` ni de JavaFX.
 5. `main` solo recibe merges desde `develop` con todas las pruebas en verde.
 
-## Estado al 29/10/2026
+## Estado al 30/10/2026
 
-Fase 2 (procesos sin E/S) en `develop`: estados, PCB de 22 campos, colas, las 4 políticas en contexto expropiativo y no expropiativo, despachador con costo y bit de modo, planificadores de largo y mediano plazo, y `Kernel` con los 5 momentos de invocación. Pruebas: taller 2026-2 ej. 2, 5, 9, 10 b, 11, 16, 17, 20, 21, 22, 23, 24, 26 y 27; PC2 25-2 preg. 3; PC2 26-1 preg. 22; PC3 25-I preg. 2; rangos de las ecuaciones aleatorias. Siguiente: Fase 3, E/S e interrupciones.
+Fases 2 y 3 en `develop` (PR #1 a #11): procesos sin E/S (estados, PCB de 22 campos, colas, las 4 políticas en contexto expropiativo y no expropiativo, despachador con bit de modo, largo y mediano plazo, `Kernel` con los 5 momentos) y E/S con interrupciones (PIC con IRR/IMR/ISR, llamada 0x80 con bloque de petición, gestor de E/S con cola FIFO por dispositivo e IRQ de fin, señal de teclado con E04). Pruebas: taller 2026-2 parte 1 ej. 8 y parte 2 ej. 2, 4, 5, 9, 10 b, 11, 16, 17, 20, 21, 22, 23, 24, 26 y 27; EP 25-1 preg. 6; EP 26-1 preg. 21; PC2 25-2 preg. 3; PC2 26-1 preg. 22; PC3 25-I preg. 2. Siguiente: Fase 4, memoria.
 
