@@ -24,6 +24,10 @@ import pe.uni.so.procesos.Pcb;
  * <p>Contexto no expropiativo: en b, c y d el proceso solo se encola. Contexto expropiativo
  * (SRTF, Prioridad E): en c y d el candidato se compara contra el que ejecuta. El timer (b)
  * expropia siempre que haya otro proceso listo, porque el quantum ya se agotó.
+ *
+ * <p>[P7] El quantum se toma al despachar: cambiarlo en plena simulación rige desde el
+ * siguiente despacho. [P8] La CPU entra en modo KERNEL con cada tick, llamada al sistema o IRQ,
+ * y vuelve a USUARIO cuando el despachador entrega la CPU a un proceso.
  */
 public class Kernel {
 
@@ -41,6 +45,8 @@ public class Kernel {
     private final List<Evento> bitacora = new ArrayList<>();
     private final StringBuilder gantt = new StringBuilder();
     private int t, usado, desalojos;
+    private int quantumDespacho;                           // [P7] el quantum vigente se fija al despachar
+    private Modo modo = Modo.KERNEL;                        // [P8] bit de modo de la CPU
     private boolean revisarExpropiacion;                   // hubo un momento c o d en este instante
 
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos, PlanificadorLargoPlazo largoPlazo) {
@@ -55,8 +61,10 @@ public class Kernel {
 
     /** Un tick: eventos del instante t, una decisión de planificación y una instrucción. */
     public void paso() {
+        modo = Modo.KERNEL;                                // la interrupción del reloj entra al kernel
         momentoD();
         planificar();
+        if (colas.enCpu() != null) modo = Modo.USUARIO;    // paso 4 del despachador: vuelve a modo usuario
         ejecutar();
         t++;
     }
@@ -83,6 +91,7 @@ public class Kernel {
     public void pedirES(Dispositivo d) {
         Pcb p = colas.enCpu();
         colas.bloquearEnCpu(d);                            // valida que haya alguien en la CPU
+        modo = Modo.KERNEL;                                // llamada al sistema (vector 0x80)
         registrar(t, Momento.A, p, "pide E/S a " + d + " y espera en su cola");
     }
 
@@ -94,6 +103,7 @@ public class Kernel {
     /** (c) Fin de E/S: el primero del dispositivo pasa a Listo (nunca directo a la CPU). */
     public void finES(Dispositivo d) {
         Pcb p = colas.terminarES(d);
+        modo = Modo.KERNEL;                                // IRQ del dispositivo
         registrar(t, Momento.C, p, "terminó su E/S en " + d + " y pasa a Listo");
         revisarExpropiacion = true;
     }
@@ -126,9 +136,9 @@ public class Kernel {
         List<Pcb> candidatos = listosResidentes();
         boolean cambiar = actual == null;                  // momentos a y e: CPU libre
 
-        if (actual != null && usado >= politica.quantum()) {           // (b) timer
-            if (candidatos.isEmpty()) usado = 0;                        // está solo: sigue sin cambio
-            else { cambiar = true; momentoB(actual, "agotó su quantum de " + politica.quantum()); }
+        if (actual != null && usado >= quantumDespacho) {              // (b) timer
+            if (candidatos.isEmpty()) { usado = 0; quantumDespacho = politica.quantum(); }   // solo: nuevo quantum
+            else { cambiar = true; momentoB(actual, "agotó su quantum de " + quantumDespacho); }
         } else if (actual != null && revisarExpropiacion && !candidatos.isEmpty()) {   // (c)(d)
             Pcb candidato = politica.elegir(candidatos);
             if (politica.expropia(candidato, actual)) {
@@ -142,16 +152,18 @@ public class Kernel {
         if (!cambiar) return;
         despachador.despachar(colas, politica, t);         // guarda el saliente y carga el entrante
         Pcb entrante = colas.enCpu();
-        if (entrante != null) { entrante.marcarInicio(t); usado = 0; }
+        if (entrante != null) { entrante.marcarInicio(t); usado = 0; quantumDespacho = politica.quantum(); }
     }
 
     private void ejecutar() {
         colas.listos().forEach(Pcb::sumarEspera);
+        procesos.stream().filter(p -> p.estado() == Estado.BLOQUEADO).forEach(Pcb::sumarBloqueado);
         Pcb actual = colas.enCpu();
         gantt.append(actual == null ? "-" : actual.pid).append(' ');
         if (actual == null) return;
         actual.ejecutarInstruccion();
         usado++;
+        actual.fijarQuantumRestante(quantumDespacho == Integer.MAX_VALUE ? 0 : quantumDespacho - usado);
         if (actual.restante() == 0) momentoE(actual);
     }
 
@@ -171,5 +183,6 @@ public class Kernel {
     public List<Evento> eventos(Momento m) { return bitacora.stream().filter(e -> e.momento() == m).toList(); }
     public String gantt() { return gantt.toString().trim(); }
     public int desalojos() { return desalojos; }
+    public Modo modo() { return modo; }
     public Despachador despachador() { return despachador; }
 }

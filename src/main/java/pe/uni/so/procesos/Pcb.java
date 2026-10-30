@@ -1,24 +1,31 @@
 package pe.uni.so.procesos;
 
+import pe.uni.so.es.Dispositivo;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.excepciones.TransicionInvalidaException;
 
 /**
- * [P3] Bloque de control de proceso. Solo los campos que usa el motor hasta ahora;
- * la tabla completa de 22 campos está en docs/arquitectura.
+ * [P3] Bloque de control de proceso. Su disposición en memoria (22 campos con desplazamiento)
+ * está en {@link CampoPcb}; {@link #leer(CampoPcb)} devuelve el valor de cada campo.
  */
 public class Pcb {
+    public enum Tipo { USUARIO, SISTEMA }
+
     public final int pid;
     public final int llegada;
     public final int burst;
     public final int prioridad;      // menor número = mayor prioridad (convención del profesor)
     public final int memoria;        // [P5] memoria que ocupa residente (unidades del simulador)
+    private final int ppid = 1;      // todo proceso de usuario cuelga de init (PID 1)
+    private final Tipo tipo = Tipo.USUARIO;
 
     private Estado estado = Estado.NUEVO;
     private int restante;
     private int pc;                  // [P3] contador de programa: avanza 4 bytes por instrucción
-    private int inicio = -1, fin = -1, espera = 0, cpu = 0;
+    private int inicio = -1, fin = -1, espera = 0, cpu = 0, bloqueado = 0;
+    private int quantumRestante;
+    private Dispositivo dispositivo;  // [P3] dispositivo por el que espera; null si no espera E/S
     private boolean suspendido;      // [P5] en swap: atributo de Listo o Bloqueado, no un sexto estado
 
     public Pcb(int pid, int llegada, int burst, int prioridad, int memoria) {
@@ -58,6 +65,32 @@ public class Pcb {
     public void marcarInicio(int t) { if (inicio < 0) inicio = t; }
     public void marcarFin(int t) { fin = t; }
     public void sumarEspera() { espera++; }
+    public void sumarBloqueado() { bloqueado++; }
+    public void fijarQuantumRestante(int q) { quantumRestante = q; }
+    void esperar(Dispositivo d) { dispositivo = d; }       // lo usan las colas al bloquear y al terminar la E/S
+
+    /** [P3] Valor del campo tal como quedaría guardado en la PCB (enteros de 32 bits). */
+    public int leer(CampoPcb campo) {
+        return switch (campo) {
+            case PID -> pid;
+            case PPID -> ppid;
+            case TIPO -> tipo.ordinal();
+            case ESTADO -> estado.ordinal();
+            case PC -> pc;
+            case BURST -> burst << 16 | restante;          // 16 bits altos: total; bajos: restante
+            case PRIORIDAD -> prioridad;
+            case QUANTUM_RESTANTE -> quantumRestante;
+            case LLEGADA -> llegada;
+            case PRIMERA_CPU -> inicio;
+            case FIN -> fin;
+            case CPU -> cpu;
+            case ESPERA -> espera;
+            case BLOQUEADO -> bloqueado;
+            case DISPOSITIVO -> dispositivo == null ? -1 : dispositivo.ordinal();
+            // Reservados: se llenan con la CPU y los errores (Fase 5), la memoria (Fase 4) y la E/S (Fase 3)
+            case REGISTROS, SP, TABLA_PAGINAS, SEGMENTOS, MARCOS, PEDIDOS_ES, ERROR_E_INTERRUPCIONES -> 0;
+        };
+    }
 
     public Estado estado() { return estado; }
     public boolean suspendido() { return suspendido; }
@@ -67,6 +100,11 @@ public class Pcb {
     public int fin() { return fin; }
     public int espera() { return espera; }
     public int cpu() { return cpu; }
+    public int bloqueado() { return bloqueado; }
+    public int quantumRestante() { return quantumRestante; }
+    public Dispositivo dispositivo() { return dispositivo; }
+    public int ppid() { return ppid; }
+    public Tipo tipo() { return tipo; }
 
     // Indicadores con las definiciones del taller 2026-2
     public int retorno() { return fin - llegada; }

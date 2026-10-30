@@ -59,6 +59,7 @@ public class Colas {
     public void bloquearEnCpu(Dispositivo d) {
         Pcb p = exigirEnCpu("pedir E/S a " + d);
         p.pasarA(Estado.BLOQUEADO);
+        p.esperar(d);
         dispositivos.get(d).addLast(p);
         enCpu = null;
     }
@@ -68,6 +69,7 @@ public class Colas {
         Pcb p = dispositivos.get(d).peekFirst();
         if (p == null) throw new EventoInvalidoException("Fin de E/S en " + d + " con la cola vacía");
         p.pasarA(Estado.LISTO);
+        p.esperar(null);
         dispositivos.get(d).pollFirst();
         listos.add(p);
         return p;

@@ -27,8 +27,8 @@ GitHub Actions corre `mvn verify` y la matriz de trazabilidad en cada push y PR,
 
 ```text
 src/main/java/pe/uni/so/
-  procesos/        Estado (5 estados, 6 transiciones), Pcb
-  motor/           Kernel (tick a tick, los 5 momentos a–e de invocación del planificador), Momento
+  procesos/        Estado (5 estados, 6 transiciones), Pcb, CampoPcb (22 campos en memoria), Colas
+  motor/           Kernel (tick a tick, los 5 momentos a–e de invocación del planificador), Momento, Modo
   planificacion/   PoliticaPlanificacion (Strategy): Fcfs, Sjf, Srtf, Prioridad, RoundRobin; SimuladorCpu
   memoria/         EstrategiaAsignacion (Strategy): primer, mejor y peor ajuste; MapaBits
   interrupciones/  TipoInterrupcion (tabla de vectores)
@@ -48,6 +48,7 @@ herramientas/      trazabilidad.py
 4. El motor no importa nada de `ui` ni de JavaFX.
 5. `main` solo recibe merges desde `develop` con todas las pruebas en verde.
 
-## Estado al 23/10/2026
+## Estado al 29/10/2026
 
-18 pruebas en verde: taller 2026-2 ej. 2, 5, 21, 22, 23, 24, 26 y 27; PC2 25-2 preg. 3; PC2 26-1 preg. 22; PC3 25-I preg. 2; rangos de las ecuaciones aleatorias.
+Fase 2 (procesos sin E/S) en `develop`: estados, PCB de 22 campos, colas, las 4 políticas en contexto expropiativo y no expropiativo, despachador con costo y bit de modo, planificadores de largo y mediano plazo, y `Kernel` con los 5 momentos de invocación. Pruebas: taller 2026-2 ej. 2, 5, 9, 10 b, 11, 16, 17, 20, 21, 22, 23, 24, 26 y 27; PC2 25-2 preg. 3; PC2 26-1 preg. 22; PC3 25-I preg. 2; rangos de las ecuaciones aleatorias. Siguiente: Fase 3, E/S e interrupciones.
+

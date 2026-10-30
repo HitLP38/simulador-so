@@ -12,6 +12,7 @@ import pe.uni.so.es.Dispositivo;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.motor.Kernel;
+import pe.uni.so.motor.Modo;
 import pe.uni.so.motor.Momento;
 import pe.uni.so.planificacion.*;
 import pe.uni.so.procesos.Estado;
@@ -138,6 +139,62 @@ class KernelTest {
         k.paso();
         assertEquals(p2, k.colas().enCpu());
         assertEquals(2, p2.respuesta());
+    }
+
+    @Test @DisplayName("[P7] Cambiar el quantum en plena simulación rige desde el siguiente despacho")
+    void quantumEnCaliente() {
+        RoundRobin rr = new RoundRobin(2);
+        Kernel k = pasos(new Kernel(rr, List.of(new Pcb(1, 0, 6), new Pcb(2, 0, 6))), 3);   // P2 lleva 1 de 2
+        rr.setQuantum(3);
+        k.ejecutarTodo();
+        // P2 termina su quantum de 2 (t = 3); desde t = 4 cada despacho usa q = 3
+        assertEquals("1 1 2 2 1 1 1 2 2 2 1 2", k.gantt());
+        assertTrue(k.eventos(Momento.B).get(1).detalle().contains("quantum de 2"));
+        assertTrue(k.eventos(Momento.B).get(2).detalle().contains("quantum de 3"));
+    }
+
+    @Test @DisplayName("[P1][P6] Las 6 transiciones quedan en la bitácora con su causa")
+    void seisTransicionesConCausa() {
+        Pcb p1 = new Pcb(1, 0, 4, 3), p2 = new Pcb(2, 1, 2, 1);
+        Kernel k = pasos(new Kernel(new Prioridad(true), List.of(p1, p2)), 2);   // P2 llega y expropia a P1
+        k.pedirES(Dispositivo.DISCO);                                              // P2 pide E/S
+        pasos(k, 1);                                                               // P1 vuelve a la CPU
+        k.finES(Dispositivo.DISCO);                                                // P2 vuelve y expropia
+        k.ejecutarTodo();
+
+        for (Momento m : Momento.values()) assertTrue(!k.eventos(m).isEmpty(), "falta el momento " + m);
+        assertTrue(k.bitacora().stream().allMatch(e -> !e.detalle().isBlank()));
+        // el despacho (Listo → Ejecutando) lo registra el despachador con sus 4 pasos
+        assertTrue(k.despachador().bitacora().stream().anyMatch(l -> l.contains("pasa a Ejecutando")));
+        assertEquals(Estado.TERMINADO, p1.estado());
+        assertEquals(Estado.TERMINADO, p2.estado());
+    }
+
+    @Test @DisplayName("[P8] El bit de modo pasa a KERNEL con interrupciones y llamadas al sistema, y a USUARIO al despachar")
+    void bitDeModo() {
+        Kernel k = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 3)));
+        assertEquals(Modo.KERNEL, k.modo());                   // arranque
+        k.paso();
+        assertEquals(Modo.USUARIO, k.modo());                  // P1 ejecuta
+        k.pedirES(Dispositivo.DISCO);
+        assertEquals(Modo.KERNEL, k.modo());                   // llamada al sistema 0x80
+        k.paso();
+        assertEquals(Modo.KERNEL, k.modo());                   // CPU ociosa: se queda en el kernel
+        k.finES(Dispositivo.DISCO);
+        k.paso();
+        assertEquals(Modo.USUARIO, k.modo());
+        assertTrue(k.despachador().bitacora().stream().anyMatch(l -> l.contains("modo usuario")));
+    }
+
+    @Test @DisplayName("[P3] El Kernel lleva en la PCB el tiempo bloqueado y el quantum restante")
+    void camposQueLlevaElKernel() {
+        Pcb p1 = new Pcb(1, 0, 3), p2 = new Pcb(2, 0, 4);
+        Kernel k = pasos(new Kernel(new RoundRobin(3), List.of(p1, p2)), 1);
+        assertEquals(2, p1.quantumRestante());                  // usó 1 de 3
+        k.pedirES(Dispositivo.DISCO);
+        pasos(k, 2);
+        assertEquals(2, p1.bloqueado());
+        assertEquals(1, p2.quantumRestante());
     }
 
     @Test @DisplayName("[P3][P6] Un burst de 0 o negativo se rechaza al crear el proceso")
