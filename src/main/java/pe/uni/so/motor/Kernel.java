@@ -2,8 +2,11 @@ package pe.uni.so.motor;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import pe.uni.so.es.Dispositivo;
+import pe.uni.so.es.SolicitudES;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.planificacion.Despachador;
 import pe.uni.so.planificacion.PlanificadorLargoPlazo;
@@ -43,6 +46,7 @@ public class Kernel {
     private final List<Pcb> procesos;
     private final List<Pcb> porLlegar;
     private final List<Evento> bitacora = new ArrayList<>();
+    private final Map<Pcb, SolicitudES> solicitudes = new HashMap<>();   // [E4] bloque de petición de cada bloqueado
     private final StringBuilder gantt = new StringBuilder();
     private int t, usado, desalojos;
     private int quantumDespacho;                           // [P7] el quantum vigente se fija al despachar
@@ -87,12 +91,27 @@ public class Kernel {
 
     // ---------------------------------------------------------------- los 5 momentos
 
-    /** (a) El proceso en ejecución pide E/S: se bloquea en la cola del dispositivo y la CPU queda libre. */
+    /**
+     * [E2][E3] Llamada al sistema 0x80 (interrupción de software, síncrona): el proceso en
+     * ejecución entrega el bloque de petición, pasa a Bloqueado al final de la cola del
+     * dispositivo y la CPU queda libre (momento a).
+     */
+    public void llamadaSistema(SolicitudES s) {
+        Pcb p = colas.enCpu();
+        if (p == null) throw new EventoInvalidoException("t=" + t + ": llamada al sistema con la CPU libre");
+        if (s.pid() != p.pid) throw new EventoInvalidoException("La solicitud es de P" + s.pid() + ", pero ejecuta " + p);
+        colas.bloquearEnCpu(s.dispositivo());
+        modo = Modo.KERNEL;                                // trap: vector 0x80
+        p.registrarPedidoES();
+        solicitudes.put(p, s);
+        registrar(t, Momento.A, p, "llamada al sistema 0x80: " + s + "; espera en su cola");
+    }
+
+    /** (a) Atajo con una petición mínima (1 byte, 1 tick); la usan las pruebas de planificación. */
     public void pedirES(Dispositivo d) {
         Pcb p = colas.enCpu();
-        colas.bloquearEnCpu(d);                            // valida que haya alguien en la CPU
-        modo = Modo.KERNEL;                                // llamada al sistema (vector 0x80)
-        registrar(t, Momento.A, p, "pide E/S a " + d + " y espera en su cola");
+        if (p == null) throw new EventoInvalidoException("t=" + t + ": pedido de E/S con la CPU libre");
+        llamadaSistema(new SolicitudES(p.pid, d, SolicitudES.Operacion.LEER, 0, 1, 1));
     }
 
     /** (b) Ejecutando → Listo, por fin de quantum o porque otro lo expropia. */
@@ -104,6 +123,8 @@ public class Kernel {
     public void finES(Dispositivo d) {
         Pcb p = colas.terminarES(d);
         modo = Modo.KERNEL;                                // IRQ del dispositivo
+        p.completarPedidoES();
+        solicitudes.remove(p);
         registrar(t, Momento.C, p, "terminó su E/S en " + d + " y pasa a Listo");
         revisarExpropiacion = true;
     }
@@ -185,5 +206,7 @@ public class Kernel {
     public String gantt() { return gantt.toString().trim(); }
     public int desalojos() { return desalojos; }
     public Modo modo() { return modo; }
+    /** [E4] Bloque de petición del proceso bloqueado, o null si no espera E/S. */
+    public SolicitudES solicitud(Pcb p) { return solicitudes.get(p); }
     public Despachador despachador() { return despachador; }
 }

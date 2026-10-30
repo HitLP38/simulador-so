@@ -27,6 +27,7 @@ public class Pcb {
     private int restante;
     private int pc;                  // [P3] contador de programa: avanza 4 bytes por instrucción
     private int inicio = -1, fin = -1, espera = 0, cpu = 0, bloqueado = 0;
+    private int pedidosES, interrupciones;   // [E3] pedidos de E/S pendientes y llamadas/IRQ propias
     private int quantumRestante;
     private Dispositivo dispositivo;  // [P3] dispositivo por el que espera; null si no espera E/S
     private boolean suspendido;      // [P5] en swap: atributo de Listo o Bloqueado, no un sexto estado
@@ -70,6 +71,14 @@ public class Pcb {
     public void marcarFin(int t) { fin = t; }
     public void sumarEspera() { espera++; }
     public void sumarBloqueado() { bloqueado++; }
+    /** [E2] El proceso hizo una llamada al sistema para pedir E/S. */
+    public void registrarPedidoES() { pedidosES++; interrupciones++; }
+    /** [E6] Terminó uno de sus pedidos de E/S (la IRQ de fin también cuenta como interrupción suya). */
+    public void completarPedidoES() {
+        if (pedidosES == 0) throw new EventoInvalidoException(this + " no tiene pedidos de E/S pendientes");
+        pedidosES--;
+        interrupciones++;
+    }
     public void fijarQuantumRestante(int q) { quantumRestante = q; }
     void esperar(Dispositivo d) { dispositivo = d; }       // lo usan las colas al bloquear y al terminar la E/S
 
@@ -91,8 +100,10 @@ public class Pcb {
             case ESPERA -> espera;
             case BLOQUEADO -> bloqueado;
             case DISPOSITIVO -> dispositivo == null ? -1 : dispositivo.ordinal();
-            // Reservados: se llenan con la CPU y los errores (Fase 5), la memoria (Fase 4) y la E/S (Fase 3)
-            case REGISTROS, SP, TABLA_PAGINAS, SEGMENTOS, MARCOS, PEDIDOS_ES, ERROR_E_INTERRUPCIONES -> 0;
+            // Reservados: registros y SP con la CPU (Fase 5); páginas, segmentos y marcos con la memoria (Fase 4)
+            case PEDIDOS_ES -> pedidosES;
+            case ERROR_E_INTERRUPCIONES -> interrupciones;   // 16 bits bajos; el código de error llega con P9
+            case REGISTROS, SP, TABLA_PAGINAS, SEGMENTOS, MARCOS -> 0;
         };
     }
 
@@ -105,6 +116,8 @@ public class Pcb {
     public int espera() { return espera; }
     public int cpu() { return cpu; }
     public int bloqueado() { return bloqueado; }
+    public int pedidosES() { return pedidosES; }
+    public int interrupciones() { return interrupciones; }
     public int quantumRestante() { return quantumRestante; }
     public Dispositivo dispositivo() { return dispositivo; }
     public int ppid() { return ppid; }
