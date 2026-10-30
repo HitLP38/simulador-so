@@ -13,4 +13,10 @@ public enum Dispositivo {
     public final TipoInterrupcion interrupcion;
 
     Dispositivo(TipoInterrupcion interrupcion) { this.interrupcion = interrupcion; }
+
+    /** Dispositivo que levanta esa IRQ, o null si el vector no es de un dispositivo (timer, excepciones). */
+    public static Dispositivo de(TipoInterrupcion t) {
+        for (Dispositivo d : values()) if (d.interrupcion == t) return d;
+        return null;
+    }
 }
