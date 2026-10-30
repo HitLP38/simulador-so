@@ -24,6 +24,8 @@ public record SolicitudES(int pid, Dispositivo dispositivo, Operacion operacion,
         if (bufer < 0) throw new ParametroInvalidoException("P" + pid + ": búfer en dirección negativa (" + bufer + ")");
         if (bytes <= 0) throw new ParametroInvalidoException("P" + pid + ": cantidad de bytes debe ser > 0 (" + bytes + ")");
         if (duracion < 1) throw new ParametroInvalidoException("P" + pid + ": la duración debe ser >= 1 tick (" + duracion + ")");
+        if ((long) bufer + bytes - 1 > Integer.MAX_VALUE)
+            throw new ParametroInvalidoException("P" + pid + ": el búfer se sale del espacio de direcciones");
     }
 
     /** Última dirección del búfer que ocupa la transferencia (destino contiguo). */

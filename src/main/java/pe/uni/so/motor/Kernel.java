@@ -8,6 +8,7 @@ import java.util.Map;
 import pe.uni.so.es.Dispositivo;
 import pe.uni.so.es.SolicitudES;
 import pe.uni.so.excepciones.EventoInvalidoException;
+import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.planificacion.Despachador;
 import pe.uni.so.planificacion.PlanificadorLargoPlazo;
 import pe.uni.so.planificacion.PoliticaPlanificacion;
@@ -97,6 +98,7 @@ public class Kernel {
      * dispositivo y la CPU queda libre (momento a).
      */
     public void llamadaSistema(SolicitudES s) {
+        if (s == null) throw new ParametroInvalidoException("La llamada al sistema 0x80 necesita un bloque de petición");
         Pcb p = colas.enCpu();
         if (p == null) throw new EventoInvalidoException("t=" + t + ": llamada al sistema con la CPU libre");
         if (s.pid() != p.pid) throw new EventoInvalidoException("La solicitud es de P" + s.pid() + ", pero ejecuta " + p);

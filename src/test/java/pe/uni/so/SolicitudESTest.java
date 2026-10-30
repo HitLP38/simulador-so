@@ -39,6 +39,10 @@ class SolicitudESTest {
         assertThrows(ParametroInvalidoException.class, () -> new SolicitudES(1, Dispositivo.DISCO, Operacion.LEER, -4, 8, 1));
         assertThrows(ParametroInvalidoException.class, () -> new SolicitudES(1, Dispositivo.DISCO, Operacion.LEER, 0, 0, 1));
         assertThrows(ParametroInvalidoException.class, () -> new SolicitudES(1, Dispositivo.DISCO, Operacion.LEER, 0, 8, 0));
+        assertThrows(ParametroInvalidoException.class,                                   // desborda int
+                () -> new SolicitudES(1, Dispositivo.DISCO, Operacion.LEER, Integer.MAX_VALUE, 2, 1));
+        assertEquals(Integer.MAX_VALUE,                                                   // justo en el límite
+                new SolicitudES(1, Dispositivo.DISCO, Operacion.LEER, Integer.MAX_VALUE, 1, 1).finBufer());
     }
 
     @Test @DisplayName("[E2][E3] La llamada 0x80 bloquea al proceso en la cola del dispositivo, en modo kernel, y deja la petición")
@@ -74,5 +78,6 @@ class SolicitudESTest {
         k.paso();
         SolicitudES deP2 = new SolicitudES(2, Dispositivo.DISCO, Operacion.LEER, 0, 8, 2);
         assertThrows(EventoInvalidoException.class, () -> k.llamadaSistema(deP2));        // ejecuta P1
+        assertThrows(ParametroInvalidoException.class, () -> k.llamadaSistema(null));    // sin bloque de petición
     }
 }
