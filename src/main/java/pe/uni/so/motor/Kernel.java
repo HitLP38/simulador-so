@@ -2,13 +2,15 @@ package pe.uni.so.motor;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import pe.uni.so.es.Dispositivo;
+import pe.uni.so.es.GestorES;
 import pe.uni.so.es.SolicitudES;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
+import pe.uni.so.interrupciones.ControladorInterrupciones;
+import pe.uni.so.interrupciones.TipoInterrupcion;
 import pe.uni.so.planificacion.Despachador;
 import pe.uni.so.planificacion.PlanificadorLargoPlazo;
 import pe.uni.so.planificacion.PoliticaPlanificacion;
@@ -29,6 +31,10 @@ import pe.uni.so.procesos.Pcb;
  * (SRTF, Prioridad E): en c y d el candidato se compara contra el que ejecuta. El timer (b)
  * expropia siempre que haya otro proceso listo, porque el quantum ya se agotó.
  *
+ * <p>[E5][E6] Cada tick: llegadas (d), IRQ de fin de E/S que entrega el PIC (c), una decisión de
+ * planificación, una instrucción y un tick de trabajo de cada dispositivo. Un dispositivo que
+ * termina en el tick t levanta su IRQ, y el proceso vuelve a Listo en t + 1.
+ *
  * <p>[P7] El quantum se toma al despachar: cambiarlo en plena simulación rige desde el
  * siguiente despacho. [P8] La CPU entra en modo KERNEL con cada tick, llamada al sistema o IRQ,
  * y vuelve a USUARIO cuando el despachador entrega la CPU a un proceso.
@@ -47,7 +53,8 @@ public class Kernel {
     private final List<Pcb> procesos;
     private final List<Pcb> porLlegar;
     private final List<Evento> bitacora = new ArrayList<>();
-    private final Map<Pcb, SolicitudES> solicitudes = new HashMap<>();   // [E4] bloque de petición de cada bloqueado
+    private final ControladorInterrupciones pic = new ControladorInterrupciones();   // [P2]
+    private final GestorES gestorES = new GestorES(colas, pic);                     // [E5]
     private final StringBuilder gantt = new StringBuilder();
     private int t, usado, desalojos;
     private int quantumDespacho;                           // [P7] el quantum vigente se fija al despachar
@@ -68,10 +75,25 @@ public class Kernel {
     public void paso() {
         modo = Modo.KERNEL;                                // la interrupción del reloj entra al kernel
         momentoD();
+        atenderInterrupciones();                           // [E6] fin de E/S por IRQ (momento c)
         planificar();
         if (colas.enCpu() != null) modo = Modo.USUARIO;    // paso 4 del despachador: vuelve a modo usuario
         ejecutar();
+        gestorES.avanzar();                                // [E5] cada dispositivo trabaja un tick
         t++;
+    }
+
+    /**
+     * [P2][E6] El PIC entrega las IRQ pendientes por prioridad; para cada una se ejecuta su rutina
+     * (el proceso vuelve a Listo) y se envía el EOI. Una IRQ enmascarada queda pendiente.
+     */
+    private void atenderInterrupciones() {
+        Optional<TipoInterrupcion> irq;
+        while ((irq = pic.reconocer()).isPresent()) {
+            Dispositivo d = Dispositivo.de(irq.get());
+            if (d != null) finES(d);
+            pic.finDeInterrupcion();
+        }
     }
 
     /**
@@ -84,7 +106,7 @@ public class Kernel {
             momentoD();                                    // intenta admitir antes de decidir
             boolean ociosa = colas.enCpu() == null && listosResidentes().isEmpty();
             boolean llegadaFutura = !porLlegar.isEmpty() && porLlegar.get(0).llegada > t;
-            if (ociosa && !llegadaFutura)
+            if (ociosa && !llegadaFutura && !gestorES.ocupado())
                 throw new EventoInvalidoException("t=" + t + ": nadie puede ejecutar; quedan procesos bloqueados, suspendidos o sin memoria");
             paso();
         }
@@ -105,15 +127,21 @@ public class Kernel {
         colas.bloquearEnCpu(s.dispositivo());
         modo = Modo.KERNEL;                                // trap: vector 0x80
         p.registrarPedidoES();
-        solicitudes.put(p, s);
+        gestorES.registrar(p, s);
         registrar(t, Momento.A, p, "llamada al sistema 0x80: " + s + "; espera en su cola");
     }
 
-    /** (a) Atajo con una petición mínima (1 byte, 1 tick); la usan las pruebas de planificación. */
+    /**
+     * (a) Atajo de las pruebas de planificación: bloquea al proceso en el dispositivo sin bloque de
+     * petición, así que el gestor no lo atiende solo; lo termina la prueba con {@link #finES}.
+     */
     public void pedirES(Dispositivo d) {
         Pcb p = colas.enCpu();
         if (p == null) throw new EventoInvalidoException("t=" + t + ": pedido de E/S con la CPU libre");
-        llamadaSistema(new SolicitudES(p.pid, d, SolicitudES.Operacion.LEER, 0, 1, 1));
+        colas.bloquearEnCpu(d);
+        modo = Modo.KERNEL;
+        p.registrarPedidoES();
+        registrar(t, Momento.A, p, "pide E/S a " + d + " (manual) y espera en su cola");
     }
 
     /** (b) Ejecutando → Listo, por fin de quantum o porque otro lo expropia. */
@@ -126,8 +154,8 @@ public class Kernel {
         Pcb p = colas.terminarES(d);
         modo = Modo.KERNEL;                                // IRQ del dispositivo
         p.completarPedidoES();
-        solicitudes.remove(p);
-        registrar(t, Momento.C, p, "terminó su E/S en " + d + " y pasa a Listo");
+        gestorES.completar(p);
+        registrar(t, Momento.C, p, "IRQ " + ControladorInterrupciones.irq(d.interrupcion) + ": terminó su E/S en " + d + " y pasa a Listo");
         revisarExpropiacion = true;
     }
 
@@ -209,6 +237,8 @@ public class Kernel {
     public int desalojos() { return desalojos; }
     public Modo modo() { return modo; }
     /** [E4] Bloque de petición del proceso bloqueado, o null si no espera E/S. */
-    public SolicitudES solicitud(Pcb p) { return solicitudes.get(p); }
+    public SolicitudES solicitud(Pcb p) { return gestorES.solicitud(p); }
+    public ControladorInterrupciones pic() { return pic; }
+    public GestorES gestorES() { return gestorES; }
     public Despachador despachador() { return despachador; }
 }
