@@ -62,6 +62,23 @@ public class GestorES {
         return terminados;
     }
 
+    /**
+     * [E9] El dispositivo termina ya el pedido que está atendiendo (p. ej. el usuario pulsó una
+     * tecla antes del plazo) y levanta su IRQ. Si ya había terminado, no hace nada.
+     */
+    public void forzarFin(Dispositivo d) {
+        List<Pcb> cola = colas.cola(d);
+        if (cola.isEmpty()) return;
+        Servicio s = enServicio.get(d);
+        if (s == null || s.proceso != cola.get(0)) {
+            s = new Servicio(cola.get(0), 1);
+            enServicio.put(d, s);
+        }
+        if (s.restante == 0) return;
+        s.restante = 0;
+        pic.levantar(d.interrupcion);
+    }
+
     /** [E6] El Kernel atendió la IRQ: el pedido se cierra y el dispositivo queda libre para el siguiente. */
     public void completar(Pcb p) {
         solicitudes.remove(p);
