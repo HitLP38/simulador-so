@@ -85,13 +85,14 @@ public class Kernel {
 
     /**
      * [P2][E6] El PIC entrega las IRQ pendientes por prioridad; para cada una se ejecuta su rutina
-     * (el proceso vuelve a Listo) y se envía el EOI. Una IRQ enmascarada queda pendiente.
+     * y se envía el EOI. La rutina solo pasa el proceso a Listo si su servicio realmente terminó:
+     * una IRQ espuria (adelantada) se reconoce y se descarta. Una IRQ enmascarada queda pendiente.
      */
     private void atenderInterrupciones() {
         Optional<TipoInterrupcion> irq;
         while ((irq = pic.reconocer()).isPresent()) {
             Dispositivo d = Dispositivo.de(irq.get());
-            if (d != null) finES(d);
+            if (d != null && gestorES.servicioTerminado(d)) finES(d);
             pic.finDeInterrupcion();
         }
     }

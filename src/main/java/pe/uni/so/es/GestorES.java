@@ -68,13 +68,25 @@ public class GestorES {
         enServicio.values().removeIf(s -> s.proceso == p);
     }
 
-    /** ¿Hay algún dispositivo trabajando (o con su IRQ pendiente) sobre un pedido real? */
+    /**
+     * ¿Puede la E/S seguir avanzando sola? Sí, si algún dispositivo tiene un pedido real por
+     * empezar o en curso, o si ya terminó y su IRQ no está enmascarada (se atenderá en el próximo
+     * tick). Una IRQ enmascarada no cuenta: nadie la va a entregar mientras la máscara siga puesta.
+     */
     public boolean ocupado() {
         for (Dispositivo d : Dispositivo.values()) {
             List<Pcb> cola = colas.cola(d);
-            if (!cola.isEmpty() && solicitudes.containsKey(cola.get(0))) return true;
+            if (cola.isEmpty() || !solicitudes.containsKey(cola.get(0))) continue;
+            if (!servicioTerminado(d) || !pic.enmascarada(d.interrupcion)) return true;
         }
         return false;
+    }
+
+    /** [E6] ¿El pedido que está primero en la cola ya cumplió toda su duración? */
+    public boolean servicioTerminado(Dispositivo d) {
+        Servicio s = enServicio.get(d);
+        List<Pcb> cola = colas.cola(d);
+        return s != null && !cola.isEmpty() && s.proceso == cola.get(0) && s.restante == 0;
     }
 
     public SolicitudES solicitud(Pcb p) { return solicitudes.get(p); }

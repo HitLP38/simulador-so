@@ -1,6 +1,7 @@
 package pe.uni.so;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import pe.uni.so.es.Dispositivo;
 import pe.uni.so.es.SolicitudES;
 import pe.uni.so.es.SolicitudES.Operacion;
+import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.interrupciones.TipoInterrupcion;
 import pe.uni.so.motor.Kernel;
 import pe.uni.so.motor.Momento;
@@ -100,5 +102,29 @@ class GestorESTest {
         assertEquals(b, k.colas().enCpu());
         assertEquals(0, a.pedidosES());
         assertEquals(2, a.interrupciones());
+    }
+
+    @Test @DisplayName("[E6][P2] Una IRQ adelantada (espuria) se descarta: el proceso sigue bloqueado hasta cumplir su duración")
+    void irqEspuria() {
+        Pcb a = new Pcb(1, 0, 2), b = new Pcb(2, 0, 9);
+        Kernel k = new Kernel(new Fcfs(), List.of(a, b));
+        k.paso();
+        k.llamadaSistema(disco(1, 3));                    // disco de 1 a 4
+        k.pic().levantar(TipoInterrupcion.DISCO);         // IRQ falsa en t = 1
+        k.paso();
+        assertEquals(Estado.BLOQUEADO, a.estado());
+        assertEquals(1, k.pic().atendidas(TipoInterrupcion.DISCO));   // el PIC la entregó, pero no hubo fin de E/S
+        k.ejecutarTodo();
+        assertEquals(4, k.eventos(Momento.C).get(0).t());
+    }
+
+    @Test @DisplayName("[E6][P2] Si la única E/S pendiente tiene su IRQ enmascarada, ejecutarTodo avisa en vez de colgarse")
+    void irqEnmascaradaNoCuelga() {
+        Kernel k = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 3)));
+        k.paso();
+        k.pic().enmascarar(TipoInterrupcion.DISCO);
+        k.llamadaSistema(disco(1, 2));
+        assertThrows(EventoInvalidoException.class, k::ejecutarTodo);   // el disco termina, pero su IRQ nunca entra
+        assertTrue(k.pic().pendiente(TipoInterrupcion.DISCO));
     }
 }
