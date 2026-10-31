@@ -3,6 +3,7 @@ package pe.uni.so.memoria;
 import java.util.ArrayList;
 import java.util.List;
 import pe.uni.so.excepciones.MemoriaInsuficienteException;
+import pe.uni.so.excepciones.ParametroInvalidoException;
 
 /** [M5] Mapa de bits: un bit por marco de 2^n bytes. [I2][I5] bloques y desperdicio. */
 public class MapaBits {
@@ -16,7 +17,7 @@ public class MapaBits {
     /** [I2] El bloque debe ser potencia de 2 entre 32 KiB y 2 MiB. */
     public static void validarBloque(long bytes) {
         if (bytes < 32 * 1024 || bytes > 2 * 1024 * 1024 || Long.bitCount(bytes) != 1)
-            throw new IllegalArgumentException("Bloque inválido: " + bytes + " B (potencia de 2 entre 32 KiB y 2 MiB)");
+            throw new ParametroInvalidoException("Bloque inválido: " + bytes + " B (potencia de 2 entre 32 KiB y 2 MiB)");
     }
 
     /** [I3] Bloques que ocupa un segmento: techo(tamaño / bloque). */

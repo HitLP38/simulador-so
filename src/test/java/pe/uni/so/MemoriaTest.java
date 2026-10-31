@@ -10,6 +10,7 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import pe.uni.so.excepciones.MemoriaInsuficienteException;
+import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.memoria.EstrategiaAsignacion;
 import pe.uni.so.memoria.MapaBits;
 
@@ -63,8 +64,8 @@ class MemoriaTest {
     @Test @DisplayName("[I2][I4] El bloque debe ser potencia de 2 entre 32 KiB y 2 MiB")
     void bloquePotenciaDeDos() {
         assertDoesNotThrow(() -> MapaBits.validarBloque(64 * 1024));
-        assertThrows(IllegalArgumentException.class, () -> MapaBits.validarBloque(48 * 1024));
-        assertThrows(IllegalArgumentException.class, () -> MapaBits.validarBloque(4 * 1024 * 1024));
+        assertThrows(ParametroInvalidoException.class, () -> MapaBits.validarBloque(48 * 1024));
+        assertThrows(ParametroInvalidoException.class, () -> MapaBits.validarBloque(4 * 1024 * 1024));
     }
 
     @Test @DisplayName("[M5][I6] Mapa de bits: asignar, liberar y rechazar sin memoria")
