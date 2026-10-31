@@ -2,6 +2,7 @@ package pe.uni.so.memoria;
 
 import java.util.ArrayList;
 import java.util.List;
+import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.MemoriaInsuficienteException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 
@@ -48,6 +49,18 @@ public class MapaBits {
         for (int i = inicio; i < inicio + k; i++) ocupado[i] = true;
         return inicio;
     }
+
+    /** [M6] Marca como ocupados k marcos libres desde {@code inicio} (el hueco ya lo eligió una estrategia). */
+    public void ocupar(int inicio, int k) {
+        if (inicio < 0 || k < 0 || (long) inicio + k > ocupado.length)
+            throw new EventoInvalidoException("Rango de marcos fuera del mapa: " + k + " desde " + inicio);
+        for (int i = inicio; i < inicio + k; i++)
+            if (ocupado[i]) throw new EventoInvalidoException("El marco " + i + " ya está ocupado");
+        for (int i = inicio; i < inicio + k; i++) ocupado[i] = true;
+    }
+
+    /** Tamaño del hueco más grande (0 si la memoria está llena). */
+    public int mayorHueco() { return huecos().stream().mapToInt(Hueco::tamano).max().orElse(0); }
 
     public void liberar(int inicio, int k) { for (int i = inicio; i < inicio + k; i++) ocupado[i] = false; }
 
