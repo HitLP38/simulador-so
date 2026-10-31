@@ -4,6 +4,7 @@ import pe.uni.so.es.Dispositivo;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.excepciones.TransicionInvalidaException;
+import pe.uni.so.memoria.EspacioProceso;
 
 /**
  * [P3] Bloque de control de proceso. Su disposición en memoria (22 campos con desplazamiento)
@@ -29,6 +30,7 @@ public class Pcb {
     private int inicio = -1, fin = -1, espera = 0, cpu = 0, bloqueado = 0;
     private int pedidosES, interrupciones;   // [E3] pedidos de E/S pendientes y llamadas/IRQ propias
     private CodigoError error;              // [P9] null si terminó normalmente
+    private EspacioProceso espacio;         // [I1] segmentos del proceso; null en las pruebas sin memoria real
     private boolean cancelacionPendiente;   // [E9] señal CANCELAR aún no entregada
     private int quantumRestante;
     private Dispositivo dispositivo;  // [P3] dispositivo por el que espera; null si no espera E/S
@@ -85,6 +87,13 @@ public class Pcb {
     /** [P9] Registra el código con el que el proceso termina por error. */
     public void registrarError(CodigoError c) { error = c; cancelacionPendiente = false; }
     public CodigoError error() { return error; }
+
+    /** [I1] Asigna los segmentos del proceso antes de su admisión. */
+    public void asignarEspacio(EspacioProceso e) {
+        if (estado != Estado.NUEVO) throw new EventoInvalidoException(this + " ya fue admitido: su espacio no puede cambiar");
+        espacio = e;
+    }
+    public EspacioProceso espacio() { return espacio; }
 
     /** [E6] Terminó uno de sus pedidos de E/S (la IRQ de fin también cuenta como interrupción suya). */
     public void completarPedidoES() {

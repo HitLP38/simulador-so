@@ -12,6 +12,7 @@ import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.interrupciones.ControladorInterrupciones;
 import pe.uni.so.interrupciones.TipoInterrupcion;
+import pe.uni.so.memoria.GestorMemoria;
 import pe.uni.so.planificacion.Despachador;
 import pe.uni.so.planificacion.PlanificadorLargoPlazo;
 import pe.uni.so.planificacion.PoliticaPlanificacion;
@@ -55,6 +56,7 @@ public class Kernel {
     private final List<Pcb> procesos;
     private final List<Pcb> porLlegar;
     private final List<Evento> bitacora = new ArrayList<>();
+    private final List<GestorMemoria.Muestra> historialMemoria = new ArrayList<>();   // [I6]
     private final ControladorInterrupciones pic = new ControladorInterrupciones();   // [P2]
     private final GestorES gestorES = new GestorES(colas, pic);                     // [E5]
     private final StringBuilder gantt = new StringBuilder();
@@ -82,6 +84,8 @@ public class Kernel {
         if (colas.enCpu() != null) modo = Modo.USUARIO;    // paso 4 del despachador: vuelve a modo usuario
         ejecutar();
         gestorES.avanzar();                                // [E5] cada dispositivo trabaja un tick
+        if (largoPlazo != null && largoPlazo.gestor() != null)
+            historialMemoria.add(largoPlazo.gestor().muestra(t));   // [I6] memoria controlada en cada tick
         t++;
     }
 
@@ -276,6 +280,8 @@ public class Kernel {
     public String gantt() { return gantt.toString().trim(); }
     public int desalojos() { return desalojos; }
     public Modo modo() { return modo; }
+    /** [I6] Serie temporal de la memoria: una muestra por tick (vacía si no hay gestor de memoria). */
+    public List<GestorMemoria.Muestra> historialMemoria() { return List.copyOf(historialMemoria); }
     /** [E4] Bloque de petición del proceso bloqueado, o null si no espera E/S. */
     public SolicitudES solicitud(Pcb p) { return gestorES.solicitud(p); }
     public ControladorInterrupciones pic() { return pic; }
