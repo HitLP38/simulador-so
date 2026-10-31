@@ -52,6 +52,9 @@ public class PlanificadorLargoPlazo {
         if (gestor != null) {
             EspacioProceso e = p.espacio();
             if (e == null) throw new EventoInvalidoException(p + " no tiene espacio de proceso para pedir marcos");
+            if (e.bloque() != gestor.mmu().bloque())                     // I4: página = marco
+                throw new ParametroInvalidoException(p + ": su página (" + e.bloque() + " B) no coincide con el marco ("
+                        + gestor.mmu().bloque() + " B)");
             if (!gestor.podriaCaber(e))
                 throw new ParametroInvalidoException(p + " necesita " + e.paginasTotales() + " marcos y la memoria tiene " + memoriaTotal);
             return gestor.cabe(e) && residentes.size() < gradoMaximo;
@@ -64,9 +67,20 @@ public class PlanificadorLargoPlazo {
     /** Admisión (momento d): si cabe, reserva su memoria y lo pasa a Listo; si no, queda en Nuevo. */
     public boolean admitir(Pcb p, Colas colas) {
         if (!cabe(p)) return false;
-        colas.admitir(p);
-        reservar(p);
+        reservar(p);                                       // primero la memoria: si falla, el proceso sigue en Nuevo
+        try {
+            colas.admitir(p);
+        } catch (RuntimeException ex) {                    // no pudo pasar a Listo: se devuelve la memoria
+            deshacerReserva(p);
+            throw ex;
+        }
         return true;
+    }
+
+    private void deshacerReserva(Pcb p) {
+        residentes.remove(p);
+        if (gestor == null) usada -= p.memoria;
+        else gestor.liberar(p.pid);
     }
 
     void reservar(Pcb p) {

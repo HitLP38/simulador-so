@@ -121,6 +121,25 @@ class GestorMemoriaTest {
         assertTrue(g.residente(1));
     }
 
+    @Test @DisplayName("[I6][I4] La admisión es atómica: si la memoria o el paso a Listo fallan, nada queda a medias")
+    void admisionAtomica() {
+        GestorMemoria g = new GestorMemoria(40, B, EstrategiaAsignacion.primerAjuste());
+        PlanificadorLargoPlazo largo = new PlanificadorLargoPlazo(g);
+        Colas c = new Colas();
+
+        Pcb otroBloque = new Pcb(1, 0, 3);
+        otroBloque.asignarEspacio(new EspacioProceso(1000 * KIB, 0.30, 0.20, 32 * KIB));   // página de 32 KiB ≠ marco de 64 KiB
+        assertThrows(ParametroInvalidoException.class, () -> largo.admitir(otroBloque, c));
+        assertEquals(Estado.NUEVO, otroBloque.estado());
+        assertTrue(c.listos().isEmpty());
+
+        Pcb yaListo = proceso(2, 0, 3);
+        new Colas().admitir(yaListo);                                // ya pasó a Listo por otra vía
+        assertThrows(RuntimeException.class, () -> largo.admitir(yaListo, c));
+        assertEquals(40, g.mapa().libres());                         // la memoria reservada se devolvió
+        assertFalse(largo.residente(yaListo));
+    }
+
     @Test @DisplayName("[I6] Un proceso más grande que toda la memoria se rechaza; sin espacio de proceso es error")
     void casosInvalidos() {
         PlanificadorLargoPlazo largo = new PlanificadorLargoPlazo(new GestorMemoria(20, B, EstrategiaAsignacion.primerAjuste()));
