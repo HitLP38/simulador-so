@@ -10,6 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
+import pe.uni.so.excepciones.TransicionInvalidaException;
 import pe.uni.so.memoria.EspacioProceso;
 import pe.uni.so.memoria.EstrategiaAsignacion;
 import pe.uni.so.memoria.GestorMemoria;
@@ -135,7 +136,7 @@ class GestorMemoriaTest {
 
         Pcb yaListo = proceso(2, 0, 3);
         new Colas().admitir(yaListo);                                // ya pasó a Listo por otra vía
-        assertThrows(RuntimeException.class, () -> largo.admitir(yaListo, c));
+        assertThrows(TransicionInvalidaException.class, () -> largo.admitir(yaListo, c));
         assertEquals(40, g.mapa().libres());                         // la memoria reservada se devolvió
         assertFalse(largo.residente(yaListo));
     }
