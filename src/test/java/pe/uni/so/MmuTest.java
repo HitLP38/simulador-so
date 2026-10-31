@@ -94,6 +94,7 @@ class MmuTest {
         assertThrows(EventoInvalidoException.class, () -> t.cargarContiguo(0, 2, Integer.MAX_VALUE));
         assertThrows(EventoInvalidoException.class, () -> t.cargarContiguo(0, -1, 0));
         assertThrows(EventoInvalidoException.class, () -> t.cargarContiguo(-1, 1, 0));
+        assertThrows(EventoInvalidoException.class, () -> t.cargarContiguo(Long.MAX_VALUE, 2, 0));   // la 2.ª página desbordaría
         assertEquals(0, t.paginasValidas());
         t.cargarContiguo(5, 0, 0);                                    // cero páginas: válido, no carga nada
         assertEquals(0, t.paginasValidas());
