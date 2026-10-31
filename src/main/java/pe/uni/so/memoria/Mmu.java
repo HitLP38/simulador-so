@@ -12,7 +12,8 @@ import pe.uni.so.excepciones.FalloPaginaException;
  *   <li>Protección: la dirección y todos los bytes del acceso deben caer dentro de un mismo
  *       segmento del proceso; si no, acceso ilegal (excepción 0x0D, el proceso termina con E01).</li>
  *   <li>Página = dirección / B y desplazamiento = dirección mod B (B = 2^n: corrimiento y máscara).</li>
- *   <li>Tabla de páginas: si la página no está en un marco (bit i), fallo de página (0x0E).</li>
+ *   <li>Tabla de páginas: si la página nunca se asignó (heap o pila aún no crecen hasta ahí), acceso
+ *       ilegal; si está asignada pero no en un marco (bit i), fallo de página (0x0E).</li>
  *   <li>Física = marco × B + desplazamiento; se marcan los bits de referencia y modificación.</li>
  * </ol>
  */
@@ -63,7 +64,8 @@ public class Mmu {
         long primera = pagina(direccion), ultima = pagina(direccion + bytes - 1);
         for (long p = primera; p <= ultima; p++) {
             TablaPaginas.Entrada e = c.tabla().entrada(p);
-            if (e == null || !e.valida()) throw new FalloPaginaException(pid, p);
+            if (e == null) throw new AccesoIlegalException(pid, direccion);   // [M2] más allá del heap o de la pila actuales
+            if (!e.valida()) throw new FalloPaginaException(pid, p);
         }
         for (long p = primera; p <= ultima; p++) c.tabla().entrada(p).marcarUso(escritura);
 
