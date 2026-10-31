@@ -33,19 +33,23 @@ public final class EspacioProceso {
      * @param bloque      tamaño de página y de marco: potencia de 2 entre 32 KiB y 2 MiB
      */
     public EspacioProceso(long texto, double fraccionDatos, double fraccionHeap, long pila, long bloque) {
-        MapaBits.validarBloque(bloque);
+        MapaBits.validarBloque(bloque);                                 // ParametroInvalidoException si no es 2^n
         if (texto <= 0) throw new ParametroInvalidoException("El ejecutable debe medir más de 0 bytes (" + texto + ")");
         if (pila <= 0) throw new ParametroInvalidoException("La pila debe medir más de 0 bytes (" + pila + ")");
-        if (fraccionDatos < 0.20 || fraccionDatos > 0.40)
+        if (!(fraccionDatos >= 0.20 && fraccionDatos <= 0.40))          // la forma negada también rechaza NaN
             throw new ParametroInvalidoException("Datos debe ser 20–40 % del texto (" + fraccionDatos + ")");
-        if (fraccionHeap < 0.10 || fraccionHeap > 0.30)
+        if (!(fraccionHeap >= 0.10 && fraccionHeap <= 0.30))
             throw new ParametroInvalidoException("Heap debe ser 10–30 % del texto (" + fraccionHeap + ")");
+        if (texto >= LIMITE_VIRTUAL || pila >= LIMITE_VIRTUAL)
+            throw new ParametroInvalidoException("Un segmento no puede medir 4 GiB o más");
         this.bloque = bloque;
         tamano.put(Segmento.TEXTO, texto);
         tamano.put(Segmento.DATOS, Math.round(fraccionDatos * texto));
         tamano.put(Segmento.HEAP, Math.round(fraccionHeap * texto));
         tamano.put(Segmento.PILA, pila);
-        if (base(Segmento.HEAP) + paginas(Segmento.HEAP) * bloque > base(Segmento.PILA))
+        long reservado = 0;                                              // en long: aún no se puede pasar a int
+        for (Segmento s : Segmento.values()) reservado += MapaBits.bloques(tamano(s), bloque) * bloque;
+        if (reservado > LIMITE_VIRTUAL)
             throw new ParametroInvalidoException("El proceso no cabe en el espacio lógico de 32 bits");
     }
 
@@ -57,8 +61,8 @@ public final class EspacioProceso {
     public long tamano(Segmento s) { return tamano.get(s); }
     public long total() { return tamano.values().stream().mapToLong(Long::longValue).sum(); }
 
-    /** [I3] Páginas del segmento: ⌈tamaño / B⌉. */
-    public int paginas(Segmento s) { return (int) MapaBits.bloques(tamano(s), bloque); }
+    /** [I3] Páginas del segmento: ⌈tamaño / B⌉. Cabe en int: el constructor ya limitó todo a 4 GiB. */
+    public int paginas(Segmento s) { return Math.toIntExact(MapaBits.bloques(tamano(s), bloque)); }
     public int paginasTotales() { int n = 0; for (Segmento s : Segmento.values()) n += paginas(s); return n; }
 
     /** [I5] Fragmentación interna del segmento: lo que sobra en su última página. */

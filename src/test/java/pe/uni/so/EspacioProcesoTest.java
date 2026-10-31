@@ -34,7 +34,16 @@ class EspacioProcesoTest {
         assertThrows(ParametroInvalidoException.class, () -> new EspacioProceso(1000 * KIB, 0.30, 0.31, B));
         assertThrows(ParametroInvalidoException.class, () -> new EspacioProceso(0, 0.30, 0.20, B));
         assertThrows(ParametroInvalidoException.class, () -> new EspacioProceso(1000 * KIB, 0.30, 0.20, 0, B));
-        assertThrows(IllegalArgumentException.class, () -> new EspacioProceso(1000 * KIB, 0.30, 0.20, 48 * KIB));
+        assertThrows(ParametroInvalidoException.class, () -> new EspacioProceso(1000 * KIB, 0.30, 0.20, 48 * KIB));
+        assertThrows(ParametroInvalidoException.class, () -> new EspacioProceso(1000 * KIB, Double.NaN, 0.20, B));
+        assertThrows(ParametroInvalidoException.class, () -> new EspacioProceso(1000 * KIB, 0.30, Double.NaN, B));
+        assertThrows(ParametroInvalidoException.class, () -> new EspacioProceso(1000 * KIB, 0.30, Double.POSITIVE_INFINITY, B));
+    }
+
+    @Test @DisplayName("[I1][M3] Un proceso que no cabe en el espacio lógico de 32 bits se rechaza (sin desbordar int)")
+    void noCabeEnElEspacioLogico() {
+        assertThrows(ParametroInvalidoException.class, () -> new EspacioProceso(1000 * KIB, 0.30, 0.20, 1L << 48, B));
+        assertThrows(ParametroInvalidoException.class, () -> new EspacioProceso(3L << 30, 0.40, 0.30, B));   // 3 GiB + 40 % + 30 %
     }
 
     @Test @DisplayName("[I3][I5] Páginas por segmento y fragmentación interna con bloques de 64 KiB")
