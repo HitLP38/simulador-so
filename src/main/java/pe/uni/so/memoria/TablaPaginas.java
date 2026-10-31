@@ -37,6 +37,9 @@ public class TablaPaginas {
 
     /** [M3] Carga páginas consecutivas en marcos consecutivos (un segmento en un hueco). */
     public void cargarContiguo(long primeraPagina, int paginas, int primerMarco) {
+        if (primeraPagina < 0 || paginas < 0 || primerMarco < 0 || (long) primerMarco + paginas - 1 > Integer.MAX_VALUE)
+            throw new EventoInvalidoException("Rango inválido: " + paginas + " páginas desde la " + primeraPagina
+                    + " en marcos desde el " + primerMarco);
         for (int i = 0; i < paginas; i++) cargar(primeraPagina + i, primerMarco + i);
     }
 

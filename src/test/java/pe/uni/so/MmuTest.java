@@ -84,5 +84,18 @@ class MmuTest {
         assertThrows(EventoInvalidoException.class, () -> mmu.traducir(9, 0x0));
         assertThrows(EventoInvalidoException.class, () -> mmu.traducir(1, 0x0, 0, false));
         assertThrows(EventoInvalidoException.class, () -> new Mmu(32 * KIB).registrar(1, new EspacioProceso(1000 * KIB, 0.30, 0.20, B), t));
+        assertThrows(EventoInvalidoException.class, () -> new Mmu(B).registrar(2, null, t));
+        assertThrows(EventoInvalidoException.class, () -> new Mmu(B).registrar(2, new EspacioProceso(1000 * KIB, 0.30, 0.20, B), null));
+    }
+
+    @Test @DisplayName("[M3][M4] Un rango de carga inválido se rechaza sin modificar la tabla")
+    void cargaContiguaInvalida() {
+        TablaPaginas t = new TablaPaginas();
+        assertThrows(EventoInvalidoException.class, () -> t.cargarContiguo(0, 2, Integer.MAX_VALUE));
+        assertThrows(EventoInvalidoException.class, () -> t.cargarContiguo(0, -1, 0));
+        assertThrows(EventoInvalidoException.class, () -> t.cargarContiguo(-1, 1, 0));
+        assertEquals(0, t.paginasValidas());
+        t.cargarContiguo(5, 0, 0);                                    // cero páginas: válido, no carga nada
+        assertEquals(0, t.paginasValidas());
     }
 }

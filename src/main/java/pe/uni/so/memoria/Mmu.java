@@ -35,6 +35,8 @@ public class Mmu {
 
     /** El SO registra el espacio y la tabla del proceso (lo que apunta el PTBR en el cambio de contexto). */
     public void registrar(int pid, EspacioProceso espacio, TablaPaginas tabla) {
+        if (espacio == null || tabla == null)
+            throw new EventoInvalidoException("P" + pid + ": se requiere su espacio virtual y su tabla de páginas");
         if (espacio.bloque() != bloque)
             throw new EventoInvalidoException("P" + pid + ": su página (" + espacio.bloque() + " B) no coincide con el marco (" + bloque + " B)");
         procesos.put(pid, new Contexto(espacio, tabla));
