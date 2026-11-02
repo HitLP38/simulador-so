@@ -171,6 +171,24 @@ public class Kernel {
         return true;
     }
 
+    /** [M2] El proceso en ejecución pide memoria dinámica; false si malloc devuelve NULL. */
+    public boolean malloc(long bytes) { return gestorMemoria().crecerHeap(exigirEnCpu("malloc").pid, bytes); }
+
+    /** [M2] El proceso en ejecución hace una llamada que apila {@code bytes} (la pila crece hacia abajo). */
+    public void apilar(long bytes) { gestorMemoria().crecerPila(exigirEnCpu("apilar").pid, bytes); }
+
+    private GestorMemoria gestorMemoria() {
+        if (largoPlazo == null || largoPlazo.gestor() == null)
+            throw new EventoInvalidoException("La simulación no tiene gestor de memoria");
+        return largoPlazo.gestor();
+    }
+
+    private Pcb exigirEnCpu(String accion) {
+        Pcb p = colas.enCpu();
+        if (p == null) throw new EventoInvalidoException("t=" + t + ": " + accion + " con la CPU libre");
+        return p;
+    }
+
     /** (b) Ejecutando → Listo, por fin de quantum o porque otro lo expropia. */
     private void momentoB(Pcb saliente, String motivo) {
         registrar(t, Momento.B, saliente, motivo + "; vuelve al final de listos");
