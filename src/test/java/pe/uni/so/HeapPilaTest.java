@@ -17,6 +17,8 @@ import pe.uni.so.memoria.GestorMemoria;
 import pe.uni.so.motor.Kernel;
 import pe.uni.so.planificacion.Fcfs;
 import pe.uni.so.planificacion.PlanificadorLargoPlazo;
+import pe.uni.so.planificacion.PlanificadorMedianoPlazo;
+import pe.uni.so.procesos.Colas;
 import pe.uni.so.procesos.Pcb;
 
 class HeapPilaTest {
@@ -100,5 +102,71 @@ class HeapPilaTest {
         assertEquals(1, g.paginasHeap(1));
         assertEquals(2, g.paginasPila(1));
         assertThrows(EventoInvalidoException.class, () -> new Kernel(new Fcfs(), List.of(new Pcb(2, 0, 1))).malloc(8));
+    }
+
+    @Test @DisplayName("[M2][P5] Suspender y reanudar conserva lo que crecieron el heap y la pila")
+    void suspenderConservaCrecimiento() {
+        GestorMemoria g = new GestorMemoria(40, B, EstrategiaAsignacion.primerAjuste());
+        PlanificadorLargoPlazo largo = new PlanificadorLargoPlazo(g);
+        PlanificadorMedianoPlazo mediano = new PlanificadorMedianoPlazo(largo);
+        Pcb p = new Pcb(1, 0, 5);
+        p.asignarEspacio(espacio());
+        assertTrue(largo.admitir(p, new Colas()));
+        assertTrue(g.crecerHeap(1, 130 * KIB));                       // 3 páginas de heap
+        g.crecerPila(1, 70 * KIB);                                    // 2 páginas de pila
+        mediano.suspender(p);
+        assertEquals(40, g.mapa().libres());
+        assertFalse(g.residente(1));
+
+        assertTrue(mediano.reanudar(p));
+        assertEquals(40 - 22 - 3 - 1, g.mapa().libres());             // vuelve con todo lo que había crecido
+        assertEquals(130 * KIB, g.heapUsado(1));
+        assertEquals(70 * KIB, g.pilaUsada(1));
+        long heap = espacio().base(EspacioProceso.Segmento.HEAP);
+        g.mmu().traducir(1, heap + 2 * B);                            // la dirección del heap sigue siendo válida
+        g.mmu().traducir(1, 0xFFFE_FFFFL);                            // y la segunda página de pila también
+    }
+
+    @Test @DisplayName("[M2][P5] Reanudar exige marcos para lo crecido, no solo para lo inicial")
+    void reanudarNecesitaLoCrecido() {
+        GestorMemoria g = new GestorMemoria(25, B, EstrategiaAsignacion.primerAjuste());
+        PlanificadorLargoPlazo largo = new PlanificadorLargoPlazo(g);
+        PlanificadorMedianoPlazo mediano = new PlanificadorMedianoPlazo(largo);
+        Pcb p = new Pcb(1, 0, 5);
+        p.asignarEspacio(espacio());
+        largo.admitir(p, new Colas());
+        assertTrue(g.crecerHeap(1, 130 * KIB));                       // 22 + 3 = 25 marcos
+        mediano.suspender(p);
+        g.asignarMarcos(1);                                           // otro ocupa un marco mientras tanto
+        assertFalse(mediano.reanudar(p));                             // necesita 25 y hay 24: sigue suspendido
+        assertTrue(p.suspendido());
+    }
+
+    @Test @DisplayName("[M2] Un pedido enorme no desborda el contador: malloc devuelve NULL y la pila da E01")
+    void sinDesbordamientoAritmetico() {
+        GestorMemoria g = conProceso(40);
+        assertTrue(g.crecerHeap(1, 8));
+        assertFalse(g.crecerHeap(1, Long.MAX_VALUE));
+        assertEquals(8, g.heapUsado(1));
+        g.crecerPila(1, 8);
+        assertThrows(AccesoIlegalException.class, () -> g.crecerPila(1, Long.MAX_VALUE));
+        assertEquals(8, g.pilaUsada(1));
+    }
+
+    @Test @DisplayName("[M2][I6] La admisión se decide por las páginas iniciales: 22 marcos bastan aunque el máximo sea 26")
+    void admisionPorPaginasIniciales() {
+        PlanificadorLargoPlazo largo = new PlanificadorLargoPlazo(new GestorMemoria(22, B, EstrategiaAsignacion.primerAjuste()));
+        Pcb p = new Pcb(1, 0, 3);
+        p.asignarEspacio(espacio());
+        assertTrue(largo.admitir(p, new Colas()));
+    }
+
+    @Test @DisplayName("[I5][M2] La fragmentación interna sigue a las páginas cargadas y los bytes usados")
+    void desperdicioSigueAlUso() {
+        GestorMemoria g = conProceso(40);
+        assertEquals(24 * KIB + 20 * KIB + 64 * KIB, g.desperdicioInterno());   // texto, datos y la pila vacía
+        g.crecerHeap(1, 40);                                          // nueva página de heap con 40 B usados
+        g.crecerPila(1, 10 * KIB);
+        assertEquals(108 * KIB + (B - 40) - 10 * KIB, g.desperdicioInterno());
     }
 }

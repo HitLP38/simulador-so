@@ -82,7 +82,7 @@ class GestorMemoriaTest {
         assertEquals(0, g.mmu().traducir(1, 0x0).fisica());                       // texto en los marcos 0–15
         assertEquals(16 * B, g.mmu().traducir(1, 0x0010_0000L).fisica());         // datos en 16–20
         assertEquals(21 * B + 0xFFFF, g.mmu().traducir(1, 0xFFFF_FFFFL).fisica()); // pila en el marco 21
-        assertEquals(100 * KIB, g.desperdicioInterno());
+        assertEquals(108 * KIB, g.desperdicioInterno());                         // texto 24 + datos 20 + pila vacía 64
 
         g.liberar(1);
         assertEquals(40, g.mapa().libres());
@@ -104,7 +104,7 @@ class GestorMemoriaTest {
         assertEquals(k.t(), serie.size());                           // una muestra por tick
         assertTrue(serie.stream().allMatch(m -> m.libres() + m.ocupados() == 40));
         assertEquals(22, serie.get(0).ocupados());
-        assertEquals(100 * KIB, serie.get(0).desperdicioInterno());
+        assertEquals(108 * KIB, serie.get(0).desperdicioInterno());
         assertEquals(0, serie.get(serie.size() - 1).ocupados());     // al final todo se liberó
     }
 
@@ -145,7 +145,7 @@ class GestorMemoriaTest {
     @Test @DisplayName("[I6] Un proceso más grande que toda la memoria se rechaza; sin espacio de proceso es error")
     void casosInvalidos() {
         PlanificadorLargoPlazo largo = new PlanificadorLargoPlazo(new GestorMemoria(20, B, EstrategiaAsignacion.primerAjuste()));
-        assertThrows(ParametroInvalidoException.class, () -> largo.cabe(proceso(1, 0, 3)));   // 26 > 20
+        assertThrows(ParametroInvalidoException.class, () -> largo.cabe(proceso(1, 0, 3)));   // 22 iniciales > 20
         assertThrows(EventoInvalidoException.class, () -> largo.cabe(new Pcb(2, 0, 3)));
         assertThrows(ParametroInvalidoException.class, () -> new GestorMemoria(20, 48 * KIB, EstrategiaAsignacion.primerAjuste()));
     }

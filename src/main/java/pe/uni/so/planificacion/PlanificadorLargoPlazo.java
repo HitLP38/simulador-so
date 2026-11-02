@@ -56,8 +56,8 @@ public class PlanificadorLargoPlazo {
                 throw new ParametroInvalidoException(p + ": su página (" + e.bloque() + " B) no coincide con el marco ("
                         + gestor.mmu().bloque() + " B)");
             if (!gestor.podriaCaber(e))
-                throw new ParametroInvalidoException(p + " necesita " + e.paginasTotales() + " marcos y la memoria tiene " + memoriaTotal);
-            return gestor.cabe(e) && residentes.size() < gradoMaximo;
+                throw new ParametroInvalidoException(p + " necesita " + GestorMemoria.paginasIniciales(e) + " marcos y la memoria tiene " + memoriaTotal);
+            return gestor.cabe(p.pid, e) && residentes.size() < gradoMaximo;
         }
         if (p.memoria > memoriaTotal)
             throw new ParametroInvalidoException(p + " pide " + p.memoria + " y la memoria total es " + memoriaTotal);
@@ -100,6 +100,7 @@ public class PlanificadorLargoPlazo {
             throw new EventoInvalidoException("No se libera la memoria de " + p + ": está " + p.estado() + " y no suspendido");
         if (!residentes.remove(p)) throw new EventoInvalidoException(p + " no está residente");
         if (gestor == null) usada -= p.memoria;
+        else if (p.estado() != Estado.TERMINADO) gestor.suspender(p.pid);   // swap-out: conserva heap y pila
         else gestor.liberar(p.pid);
     }
 
