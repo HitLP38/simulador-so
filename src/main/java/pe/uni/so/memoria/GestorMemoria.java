@@ -1,11 +1,13 @@
 package pe.uni.so.memoria;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import pe.uni.so.excepciones.AccesoIlegalException;
 import pe.uni.so.excepciones.EventoInvalidoException;
+import pe.uni.so.excepciones.FalloPaginaException;
 import pe.uni.so.excepciones.MemoriaInsuficienteException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 
@@ -19,6 +21,11 @@ import pe.uni.so.excepciones.ParametroInvalidoException;
  * <p>[M2] Asignación dinámica: al admitir se cargan texto y datos completos, el heap vacío y una
  * página de pila. Durante la ejecución, {@code malloc} hace crecer el heap hacia arriba y las
  * llamadas hacen crecer la pila hacia abajo; cada crecimiento pide marcos nuevos.
+ *
+ * <p>[M1][M7] Paginación bajo demanda (si se configura un algoritmo de reemplazo): cada proceso
+ * recibe su cuota proporcional de marcos y todas sus páginas quedan en el espacio virtual con
+ * bit i; la primera referencia a cada una produce un fallo de página que la carga en un marco de
+ * su cuota y, si la cuota está llena, reemplaza una página del mismo proceso (reemplazo local).
  */
 public class GestorMemoria {
 
@@ -37,6 +44,8 @@ public class GestorMemoria {
         final List<Tramo> tramos = new ArrayList<>();
         int paginasHeap, paginasPila;
         long heapUsado, pilaUsada;
+        PoliticaFisica politica;                          // [M7] solo bajo demanda
+        int[] propios;                                    // [M7] marco real de cada marco local de la cuota
 
         Residente(EspacioProceso espacio, TablaPaginas tabla) { this.espacio = espacio; this.tabla = tabla; }
     }
@@ -49,24 +58,70 @@ public class GestorMemoria {
     private final Mmu mmu;
     private final Map<Integer, Residente> residentes = new LinkedHashMap<>();
     private final Map<Integer, Crecimiento> suspendidos = new LinkedHashMap<>();
+    private final Reemplazo reemplazo;                    // null: carga total al admitir
+    private final Map<Integer, Integer> cuotas = new HashMap<>();
     private long comparaciones;
+    private int fallosPagina;
 
-    public GestorMemoria(MapaBits mapa, long bloque, EstrategiaAsignacion estrategia) {
+    /** [M1][M7] Con {@code reemplazo} distinto de null, la memoria trabaja bajo demanda con reemplazo local. */
+    public GestorMemoria(MapaBits mapa, long bloque, EstrategiaAsignacion estrategia, Reemplazo reemplazo) {
         if (mapa == null || estrategia == null) throw new EventoInvalidoException("El gestor necesita mapa de bits y estrategia");
         this.mapa = mapa;
         this.estrategia = estrategia;
         this.mmu = new Mmu(bloque);                       // valida que B sea 2^n entre 32 KiB y 2 MiB
+        this.reemplazo = reemplazo;
     }
+
+    public GestorMemoria(MapaBits mapa, long bloque, EstrategiaAsignacion estrategia) { this(mapa, bloque, estrategia, null); }
 
     public GestorMemoria(int marcos, long bloque, EstrategiaAsignacion estrategia) {
         this(new MapaBits(marcos), bloque, estrategia);
     }
 
+    public GestorMemoria(int marcos, long bloque, EstrategiaAsignacion estrategia, Reemplazo reemplazo) {
+        this(new MapaBits(marcos), bloque, estrategia, reemplazo);
+    }
+
+    /** ¿Trabaja bajo demanda (carga parcial) en vez de cargar todo al admitir? */
+    public boolean bajoDemanda() { return reemplazo != null; }
+
+    /**
+     * [M7] Reparte los marcos de la RAM entre los procesos de la simulación: fᵢ = ⌊(sᵢ / S)·m⌋,
+     * sin pasar de las páginas que el proceso puede llegar a usar.
+     */
+    public void repartirCuotas(Map<Integer, EspacioProceso> procesos) {
+        if (!bajoDemanda()) throw new EventoInvalidoException("Las cuotas solo se usan con paginación bajo demanda");
+        if (procesos == null) throw new ParametroInvalidoException("Faltan los procesos para repartir marcos");
+        List<Integer> pids = new ArrayList<>(procesos.keySet());
+        int[] paginas = new int[pids.size()];
+        for (int i = 0; i < paginas.length; i++) {
+            EspacioProceso e = procesos.get(pids.get(i));
+            if (e == null) throw new EventoInvalidoException("P" + pids.get(i) + " no tiene espacio de proceso");
+            paginas[i] = e.paginasTotales();
+        }
+        int[] f = PoliticaFisica.cuotas(paginas, mapa.total());
+        cuotas.clear();
+        for (int i = 0; i < f.length; i++) cuotas.put(pids.get(i), Math.min(f[i], paginas[i]));
+    }
+
+    /** [M7] Marcos asignados al proceso por la política proporcional. */
+    public int cuota(int pid) {
+        Integer f = cuotas.get(pid);
+        if (f == null) throw new EventoInvalidoException("P" + pid + " no tiene cuota de marcos: falta repartirCuotas");
+        return f;
+    }
+
     /** ¿Hay marcos libres suficientes ahora? (el reparto en varios huecos permite usar todos). */
     public boolean cabe(EspacioProceso e) { return paginasIniciales(e) <= mapa.libres(); }
 
-    /** [P5] Igual que {@link #cabe(EspacioProceso)}, pero un proceso suspendido necesita también lo que había crecido. */
-    public boolean cabe(int pid, EspacioProceso e) { return paginasAlCargar(pid, e) <= mapa.libres(); }
+    /**
+     * [P5] Igual que {@link #cabe(EspacioProceso)}, pero un proceso suspendido necesita también lo que
+     * había crecido. [M7] Bajo demanda, lo que necesita es su cuota.
+     */
+    public boolean cabe(int pid, EspacioProceso e) { return marcosNecesarios(pid, e) <= mapa.libres(); }
+
+    /** Marcos que el proceso ocupa al (re)admitirse: su cuota bajo demanda o sus páginas cargadas con carga total. */
+    public int marcosNecesarios(int pid, EspacioProceso e) { return bajoDemanda() ? cuota(pid) : paginasAlCargar(pid, e); }
 
     /** [M2] Páginas que se cargan al admitir: texto y datos completos, heap vacío y 1 página de pila. */
     public static int paginasIniciales(EspacioProceso e) {
@@ -78,6 +133,9 @@ public class GestorMemoria {
      * carga al admitir: si después no hay marcos para crecer, malloc devuelve NULL (M2).
      */
     public boolean podriaCaber(EspacioProceso e) { return paginasIniciales(e) <= mapa.total(); }
+
+    /** Igual que {@link #podriaCaber(EspacioProceso)}, considerando la cuota bajo demanda. */
+    public boolean podriaCaber(int pid, EspacioProceso e) { return marcosNecesarios(pid, e) <= mapa.total(); }
 
     /** Páginas que se cargan al (re)admitir: las iniciales o, si estaba suspendido, las que tenía. */
     private int paginasAlCargar(int pid, EspacioProceso e) {
@@ -125,18 +183,28 @@ public class GestorMemoria {
         if (residentes.containsKey(pid)) throw new EventoInvalidoException("P" + pid + " ya tiene memoria asignada");
         if (e.bloque() != mmu.bloque())
             throw new EventoInvalidoException("P" + pid + ": su página (" + e.bloque() + " B) no coincide con el marco (" + mmu.bloque() + " B)");
-        if (!cabe(pid, e)) throw new MemoriaInsuficienteException(paginasAlCargar(pid, e), mapa.libres());
+        if (!cabe(pid, e)) throw new MemoriaInsuficienteException(marcosNecesarios(pid, e), mapa.libres());
 
         Crecimiento c = guardado(pid, e);                             // [P5] al reanudar recupera lo que había crecido
         Residente r = new Residente(e, new TablaPaginas());
-        cargar(r, e.base(EspacioProceso.Segmento.TEXTO) / e.bloque(), e.paginas(EspacioProceso.Segmento.TEXTO));
-        cargar(r, e.base(EspacioProceso.Segmento.DATOS) / e.bloque(), e.paginas(EspacioProceso.Segmento.DATOS));
+        if (bajoDemanda()) {                                          // [M7] se reserva la cuota; las páginas llegan con los fallos
+            int cuota = cuota(pid);
+            r.politica = new PoliticaFisica(reemplazo, cuota);
+            r.propios = new int[cuota];
+            int i = 0;
+            for (Tramo tr : asignarMarcos(cuota)) {
+                r.tramos.add(tr);
+                for (int k = 0; k < tr.marcos(); k++) r.propios[i++] = tr.marcoInicial() + k;
+            }
+        }
+        ubicar(r, e.base(EspacioProceso.Segmento.TEXTO) / e.bloque(), e.paginas(EspacioProceso.Segmento.TEXTO));
+        ubicar(r, e.base(EspacioProceso.Segmento.DATOS) / e.bloque(), e.paginas(EspacioProceso.Segmento.DATOS));
         if (c == null) {
-            cargar(r, paginaTopePila(e) - 1, 1);                      // la pila empieza con su página más alta
+            ubicar(r, paginaTopePila(e) - 1, 1);                      // la pila empieza con su página más alta
             r.paginasPila = 1;
         } else {
-            if (c.paginasHeap() > 0) cargar(r, e.base(EspacioProceso.Segmento.HEAP) / e.bloque(), c.paginasHeap());
-            cargar(r, paginaTopePila(e) - c.paginasPila(), c.paginasPila());
+            if (c.paginasHeap() > 0) ubicar(r, e.base(EspacioProceso.Segmento.HEAP) / e.bloque(), c.paginasHeap());
+            ubicar(r, paginaTopePila(e) - c.paginasPila(), c.paginasPila());
             r.paginasHeap = c.paginasHeap();
             r.paginasPila = c.paginasPila();
             r.heapUsado = c.heapUsado();
@@ -158,9 +226,9 @@ public class GestorMemoria {
         if (bytes > r.espacio.tamano(EspacioProceso.Segmento.HEAP) - r.heapUsado) return false;   // sin sumar: no desborda
         long nuevo = r.heapUsado + bytes;
         int necesarias = Math.toIntExact(MapaBits.bloques(nuevo, r.espacio.bloque())) - r.paginasHeap;
-        if (necesarias > mapa.libres()) return false;
+        if (!bajoDemanda() && necesarias > mapa.libres()) return false;
         if (necesarias > 0) {
-            cargar(r, r.espacio.base(EspacioProceso.Segmento.HEAP) / r.espacio.bloque() + r.paginasHeap, necesarias);
+            ubicar(r, r.espacio.base(EspacioProceso.Segmento.HEAP) / r.espacio.bloque() + r.paginasHeap, necesarias);
             r.paginasHeap += necesarias;
         }
         r.heapUsado = nuevo;
@@ -179,12 +247,50 @@ public class GestorMemoria {
             throw new AccesoIlegalException(pid, e.base(EspacioProceso.Segmento.PILA) - 1);
         long nuevo = r.pilaUsada + bytes;
         int necesarias = Math.toIntExact(MapaBits.bloques(nuevo, e.bloque())) - r.paginasPila;
-        if (necesarias > mapa.libres()) throw new MemoriaInsuficienteException(necesarias, mapa.libres());
+        if (!bajoDemanda() && necesarias > mapa.libres()) throw new MemoriaInsuficienteException(necesarias, mapa.libres());
         if (necesarias > 0) {
-            cargar(r, paginaTopePila(e) - r.paginasPila - necesarias, necesarias);
+            ubicar(r, paginaTopePila(e) - r.paginasPila - necesarias, necesarias);
             r.paginasPila += necesarias;
         }
         r.pilaUsada = nuevo;
+    }
+
+    /**
+     * [M1][M4] Acceso del proceso a memoria. Bajo demanda, cada fallo de página (0x0E) se atiende
+     * cargando la página en un marco de su cuota y el acceso se reintenta; el reemplazo registra
+     * cada referencia (LRU la necesita). Con carga total, un fallo de página no se atiende aquí.
+     */
+    public Mmu.Traduccion acceder(int pid, long direccion, int bytes, boolean escritura) {
+        Residente r = exigir(pid);
+        if (r.politica != null && bytes > 0 && direccion >= 0 && direccion <= Long.MAX_VALUE - bytes) {
+            long paginas = mmu.pagina(direccion + bytes - 1) - mmu.pagina(direccion) + 1;
+            if (paginas > r.politica.cuota()) throw new MemoriaInsuficienteException((int) Math.min(paginas, Integer.MAX_VALUE), r.politica.cuota());
+        }
+        while (true) {
+            try {
+                Mmu.Traduccion t = mmu.traducir(pid, direccion, bytes, escritura);
+                if (r.politica != null)
+                    for (long p = t.pagina(); p <= mmu.pagina(direccion + bytes - 1); p++) r.politica.referenciar(p);
+                return t;
+            } catch (FalloPaginaException f) {
+                if (r.politica == null) throw f;
+                atenderFallo(r, f.pagina);
+            }
+        }
+    }
+
+    /** [M1][M7] La página entra en un marco de la cuota; si estaba llena, la víctima local pasa a bit i. */
+    private void atenderFallo(Residente r, long pagina) {
+        PoliticaFisica.Referencia ref = r.politica.referenciar(pagina);
+        if (ref.victima() >= 0) r.tabla.invalidar(ref.victima());
+        r.tabla.cargar(pagina, r.propios[ref.marco()]);
+        fallosPagina++;
+    }
+
+    /** Carga total: pide marcos para las páginas. Bajo demanda: solo las registra en el espacio virtual (bit i). */
+    private void ubicar(Residente r, long pagina, int paginas) {
+        if (r.politica == null) { cargar(r, pagina, paginas); return; }
+        for (int i = 0; i < paginas; i++) r.tabla.registrar(pagina + i);
     }
 
     /** Pide marcos y los registra en la tabla del proceso a partir de la página indicada. */
@@ -255,4 +361,13 @@ public class GestorMemoria {
     public Mmu mmu() { return mmu; }
     public EstrategiaAsignacion estrategia() { return estrategia; }
     public long comparaciones() { return comparaciones; }
+    public Reemplazo reemplazo() { return reemplazo; }
+    /** [M1] Fallos de página atendidos en toda la simulación. */
+    public int fallosPagina() { return fallosPagina; }
+    /** [M7] Marcos de la cuota del proceso con la página que tiene cada uno (null: libre). */
+    public List<Long> marcosDe(int pid) {
+        Residente r = exigir(pid);
+        if (r.politica == null) throw new EventoInvalidoException("Sin paginación bajo demanda no hay cuota por proceso");
+        return r.politica.marcos();
+    }
 }
