@@ -262,7 +262,8 @@ public class GestorMemoria {
      */
     public Mmu.Traduccion acceder(int pid, long direccion, int bytes, boolean escritura) {
         Residente r = exigir(pid);
-        if (r.politica != null && bytes > 0 && direccion >= 0 && direccion <= Long.MAX_VALUE - bytes) {
+        mmu.validar(pid, direccion, bytes);                          // primero protección y páginas existentes, sin tocar nada
+        if (r.politica != null) {
             long paginas = mmu.pagina(direccion + bytes - 1) - mmu.pagina(direccion) + 1;
             if (paginas > r.politica.cuota()) throw new MemoriaInsuficienteException((int) Math.min(paginas, Integer.MAX_VALUE), r.politica.cuota());
         }

@@ -16,6 +16,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import pe.uni.so.excepciones.AccesoIlegalException;
 import pe.uni.so.excepciones.EventoInvalidoException;
+import pe.uni.so.excepciones.MemoriaInsuficienteException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.memoria.EspacioProceso;
 import pe.uni.so.memoria.EstrategiaAsignacion;
@@ -174,5 +175,45 @@ class PoliticaFisicaTest {
         assertThrows(AccesoIlegalException.class, () -> g.acceder(1, heap + B - 2, 4, false));   // cruza a la 2.ª página, que no existe
         assertEquals(0, g.fallosPagina());                            // no cargó la primera ni expulsó a nadie
         assertTrue(g.marcosDe(1).stream().allMatch(m -> m == null));
+    }
+
+    @Test @DisplayName("[M7] Las cuotas nunca suman más que m aunque el mínimo sea 1 marco")
+    void cuotasNoPasanDeM() {
+        assertArrayEquals(new int[] {1, 1, 1}, PoliticaFisica.cuotas(new int[] {1, 1, 100}, 3));
+        assertArrayEquals(new int[] {1, 1, 3}, PoliticaFisica.cuotas(new int[] {1, 1, 100}, 5));
+    }
+
+    @Test @DisplayName("[M1][M7] Una página no registrada es acceso ilegal aunque el acceso supere la cuota")
+    void ilegalAntesQueCuota() {
+        GestorMemoria g = new GestorMemoria(2, B, EstrategiaAsignacion.primerAjuste(), Reemplazo.FIFO);
+        Map<Integer, EspacioProceso> procesos = new LinkedHashMap<>();
+        procesos.put(1, espacio());
+        procesos.put(2, espacio());
+        g.repartirCuotas(procesos);                                   // 1 marco para cada uno
+        g.asignar(1, espacio());
+        assertTrue(g.crecerHeap(1, 8));
+        long heap = espacio().base(EspacioProceso.Segmento.HEAP);
+        assertThrows(AccesoIlegalException.class, () -> g.acceder(1, heap + B - 2, 4, false));          // 2.ª página no existe
+        assertThrows(MemoriaInsuficienteException.class, () -> g.acceder(1, B - 2, 4, false));          // 2 páginas de texto > cuota 1
+        assertEquals(0, g.fallosPagina());
+    }
+
+    @Test @DisplayName("[M2][M1][P5] Bajo demanda la pila crece hacia abajo con páginas que llegan por fallos")
+    void pilaBajoDemanda() {
+        EspacioProceso e = new EspacioProceso(1000 * KIB, 0.30, 0.20, 256 * KIB, B);   // pila de hasta 4 páginas
+        GestorMemoria g = new GestorMemoria(10, B, EstrategiaAsignacion.primerAjuste(), Reemplazo.FIFO);
+        g.repartirCuotas(Map.of(1, e));
+        g.asignar(1, e);
+        g.crecerPila(1, 100 * KIB);                                   // 2 páginas registradas, sin marcos nuevos
+        assertEquals(2, g.paginasPila(1));
+        g.acceder(1, 0xFFFF_FFFFL, 1, true);
+        g.acceder(1, 0xFFFE_FFFFL, 1, true);
+        assertEquals(2, g.fallosPagina());                            // las dos llegan por fallo de página
+        assertThrows(AccesoIlegalException.class, () -> g.acceder(1, 0xFFFD_FFFFL, 1, false));   // la de abajo aún no existe
+        g.suspender(1);
+        g.asignar(1, e);                                              // reanudar conserva el crecimiento
+        assertEquals(100 * KIB, g.pilaUsada(1));
+        g.acceder(1, 0xFFFE_FFFFL, 1, false);
+        assertEquals(3, g.fallosPagina());                            // vuelve desde swap: nuevo fallo
     }
 }

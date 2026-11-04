@@ -40,7 +40,8 @@ public class PoliticaFisica {
 
     /**
      * [M7] Cuotas proporcionales fᵢ = ⌊(sᵢ / S)·m⌋, con un mínimo de 1 marco por proceso.
-     * Los marcos que sobran por el redondeo quedan libres.
+     * Los marcos que sobran por el redondeo quedan libres; si el mínimo de 1 hace que la suma
+     * pase de m, se descuenta de las cuotas más grandes hasta que la suma sea m.
      */
     public static int[] cuotas(int[] paginas, int m) {
         if (paginas == null || paginas.length == 0) throw new ParametroInvalidoException("No hay procesos para repartir marcos");
@@ -51,7 +52,14 @@ public class PoliticaFisica {
             total += s;
         }
         int[] f = new int[paginas.length];
-        for (int i = 0; i < paginas.length; i++) f[i] = (int) Math.max(1, paginas[i] * (long) m / total);
+        long suma = 0;
+        for (int i = 0; i < paginas.length; i++) suma += f[i] = (int) Math.max(1, paginas[i] * (long) m / total);
+        while (suma > m) {                                 // el mínimo de 1 puede pasarse de m: se quita al de mayor cuota
+            int mayor = 0;
+            for (int i = 1; i < f.length; i++) if (f[i] > f[mayor]) mayor = i;
+            f[mayor]--;
+            suma--;
+        }
         return f;
     }
 
