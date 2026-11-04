@@ -163,4 +163,16 @@ class PoliticaFisicaTest {
         g.acceder(1, 0x0, 1, false);
         assertEquals(2, g.fallosPagina());                            // la página 0 tuvo que volver desde swap
     }
+
+    @Test @DisplayName("[M1][M4] Un acceso que cruza a una página nunca asignada es ilegal antes de atender ningún fallo")
+    void accesoIlegalSinFalloPrevio() {
+        GestorMemoria g = new GestorMemoria(10, B, EstrategiaAsignacion.primerAjuste(), Reemplazo.FIFO);
+        g.repartirCuotas(Map.of(1, espacio()));
+        g.asignar(1, espacio());
+        assertTrue(g.crecerHeap(1, 8));                               // 1 página de heap registrada (bit i)
+        long heap = espacio().base(EspacioProceso.Segmento.HEAP);
+        assertThrows(AccesoIlegalException.class, () -> g.acceder(1, heap + B - 2, 4, false));   // cruza a la 2.ª página, que no existe
+        assertEquals(0, g.fallosPagina());                            // no cargó la primera ni expulsó a nadie
+        assertTrue(g.marcosDe(1).stream().allMatch(m -> m == null));
+    }
 }

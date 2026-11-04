@@ -62,11 +62,10 @@ public class Mmu {
             throw new AccesoIlegalException(pid, direccion);
 
         long primera = pagina(direccion), ultima = pagina(direccion + bytes - 1);
-        for (long p = primera; p <= ultima; p++) {
-            TablaPaginas.Entrada e = c.tabla().entrada(p);
-            if (e == null) throw new AccesoIlegalException(pid, direccion);   // [M2] más allá del heap o de la pila actuales
-            if (!e.valida()) throw new FalloPaginaException(pid, p);
-        }
+        for (long p = primera; p <= ultima; p++)          // [M2] primero: ¿todas las páginas existen? (más allá del heap o la pila actuales → ilegal)
+            if (c.tabla().entrada(p) == null) throw new AccesoIlegalException(pid, direccion);
+        for (long p = primera; p <= ultima; p++)          // después: ¿están en memoria? (bit i → fallo de página)
+            if (!c.tabla().entrada(p).valida()) throw new FalloPaginaException(pid, p);
         for (long p = primera; p <= ultima; p++) c.tabla().entrada(p).marcarUso(escritura);
 
         TablaPaginas.Entrada e = c.tabla().entrada(primera);
