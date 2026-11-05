@@ -275,6 +275,7 @@ public class GestorMemoria {
                 return t;
             } catch (FalloPaginaException f) {
                 if (r.politica == null) throw f;
+                for (long p = mmu.pagina(direccion); p < f.pagina; p++) r.politica.referenciar(p);   // el prefijo residente ya se usó: LRU no debe expulsarlo
                 atenderFallo(r, f.pagina);
             }
         }

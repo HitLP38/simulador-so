@@ -216,4 +216,18 @@ class PoliticaFisicaTest {
         g.acceder(1, 0xFFFE_FFFFL, 1, false);
         assertEquals(3, g.fallosPagina());                            // vuelve desde swap: nuevo fallo
     }
+
+    @Test @DisplayName("[M1][M7] Un acceso que cruza a una página no residente no expulsa con LRU la página que ya usa")
+    void prefijoResidenteConLru() {
+        GestorMemoria g = new GestorMemoria(2, B, EstrategiaAsignacion.primerAjuste(), Reemplazo.LRU);
+        g.repartirCuotas(Map.of(1, espacio()));                      // 26 páginas, 2 marcos → cuota 2
+        g.asignar(1, espacio());
+        g.acceder(1, 0x0, 1, false);                                  // página 0 (uso más antiguo)
+        g.acceder(1, 2 * B, 1, false);                                // página 2
+        assertEquals(2, g.fallosPagina());
+        var t = g.acceder(1, B - 2, 4, false);                        // páginas 0 (residente) y 1 (no residente)
+        assertEquals(3, g.fallosPagina());                            // un solo fallo: sale la 2, no la 0
+        assertEquals(0, t.pagina());
+        assertTrue(g.marcosDe(1).containsAll(List.of(0L, 1L)));
+    }
 }
