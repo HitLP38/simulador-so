@@ -35,6 +35,12 @@ public class TablaPaginas {
         e.modificada = false;
     }
 
+    /** [M1] La página existe en el espacio virtual (respaldada en swap) pero aún no tiene marco: bit i. */
+    public void registrar(long pagina) {
+        if (pagina < 0) throw new EventoInvalidoException("Página negativa: " + pagina);
+        entradas.putIfAbsent(pagina, new Entrada());
+    }
+
     /** [M3] Carga páginas consecutivas en marcos consecutivos (un segmento en un hueco). */
     public void cargarContiguo(long primeraPagina, int paginas, int primerMarco) {
         if (primeraPagina < 0 || paginas < 0 || primerMarco < 0 || (long) primerMarco + paginas - 1 > Integer.MAX_VALUE

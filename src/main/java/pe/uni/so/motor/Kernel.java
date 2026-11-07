@@ -2,7 +2,9 @@ package pe.uni.so.motor;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import pe.uni.so.es.AccionTeclado;
 import pe.uni.so.es.Dispositivo;
@@ -12,7 +14,9 @@ import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.interrupciones.ControladorInterrupciones;
 import pe.uni.so.interrupciones.TipoInterrupcion;
+import pe.uni.so.memoria.EspacioProceso;
 import pe.uni.so.memoria.GestorMemoria;
+import pe.uni.so.memoria.Mmu;
 import pe.uni.so.planificacion.Despachador;
 import pe.uni.so.planificacion.PlanificadorLargoPlazo;
 import pe.uni.so.planificacion.PoliticaPlanificacion;
@@ -71,6 +75,11 @@ public class Kernel {
         this.procesos = List.copyOf(procesos);
         this.porLlegar = new ArrayList<>(procesos);
         porLlegar.sort(Comparator.comparingInt(p -> p.llegada));   // estable: respeta el orden de ingreso
+        if (largoPlazo != null && largoPlazo.gestor() != null && largoPlazo.gestor().bajoDemanda()) {
+            Map<Integer, EspacioProceso> espacios = new LinkedHashMap<>();   // [M7] cuotas proporcionales al inicio
+            for (Pcb p : procesos) if (p.espacio() != null) espacios.put(p.pid, p.espacio());
+            if (!espacios.isEmpty()) largoPlazo.gestor().repartirCuotas(espacios);
+        }
     }
 
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos) { this(politica, procesos, null); }
@@ -176,6 +185,11 @@ public class Kernel {
 
     /** [M2] El proceso en ejecución hace una llamada que apila {@code bytes} (la pila crece hacia abajo). */
     public void apilar(long bytes) { gestorMemoria().crecerPila(exigirEnCpu("apilar").pid, bytes); }
+
+    /** [M1][M4] El proceso en ejecución accede a memoria; bajo demanda, los fallos de página se atienden. */
+    public Mmu.Traduccion acceder(long direccion, int bytes, boolean escritura) {
+        return gestorMemoria().acceder(exigirEnCpu("acceder a memoria").pid, direccion, bytes, escritura);
+    }
 
     private GestorMemoria gestorMemoria() {
         if (largoPlazo == null || largoPlazo.gestor() == null)

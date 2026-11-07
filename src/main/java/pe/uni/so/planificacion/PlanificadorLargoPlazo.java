@@ -55,8 +55,8 @@ public class PlanificadorLargoPlazo {
             if (e.bloque() != gestor.mmu().bloque())                     // I4: página = marco
                 throw new ParametroInvalidoException(p + ": su página (" + e.bloque() + " B) no coincide con el marco ("
                         + gestor.mmu().bloque() + " B)");
-            if (!gestor.podriaCaber(e))
-                throw new ParametroInvalidoException(p + " necesita " + GestorMemoria.paginasIniciales(e) + " marcos y la memoria tiene " + memoriaTotal);
+            if (!gestor.podriaCaber(p.pid, e))
+                throw new ParametroInvalidoException(p + " necesita " + gestor.marcosNecesarios(p.pid, e) + " marcos y la memoria tiene " + memoriaTotal);
             return gestor.cabe(p.pid, e) && residentes.size() < gradoMaximo;
         }
         if (p.memoria > memoriaTotal)

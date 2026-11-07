@@ -53,24 +53,30 @@ public class Mmu {
 
     /** Traduce un acceso de {@code bytes} bytes; todos deben caer en el mismo segmento y en páginas cargadas. */
     public Traduccion traducir(int pid, long direccion, int bytes, boolean escritura) {
+        validar(pid, direccion, bytes);
         Contexto c = procesos.get(pid);
-        if (c == null) throw new EventoInvalidoException("P" + pid + " no tiene tabla de páginas en la MMU");
-        if (bytes < 1) throw new EventoInvalidoException("Un acceso debe ser de al menos 1 byte");
-
-        EspacioProceso.Segmento s = c.espacio().segmentoDe(direccion);
-        if (s == null || bytes > c.espacio().limite(s) - direccion)      // taller p.1 ej. 13: dir + n ≤ límite
-            throw new AccesoIlegalException(pid, direccion);
-
         long primera = pagina(direccion), ultima = pagina(direccion + bytes - 1);
-        for (long p = primera; p <= ultima; p++) {
-            TablaPaginas.Entrada e = c.tabla().entrada(p);
-            if (e == null) throw new AccesoIlegalException(pid, direccion);   // [M2] más allá del heap o de la pila actuales
-            if (!e.valida()) throw new FalloPaginaException(pid, p);
-        }
+        for (long p = primera; p <= ultima; p++)          // después: ¿están en memoria? (bit i → fallo de página)
+            if (!c.tabla().entrada(p).valida()) throw new FalloPaginaException(pid, p);
         for (long p = primera; p <= ultima; p++) c.tabla().entrada(p).marcarUso(escritura);
 
         TablaPaginas.Entrada e = c.tabla().entrada(primera);
         return new Traduccion(primera, desplazamiento(direccion), e.marco(), (long) e.marco() * bloque + desplazamiento(direccion));
+    }
+
+    /**
+     * Protección sin cambiar nada: el acceso debe caer entero en un segmento (taller p.1 ej. 13:
+     * dir + n ≤ límite) y todas sus páginas deben existir en la tabla; si no, acceso ilegal.
+     * [M2] Una página que no existe está más allá del heap o de la pila actuales.
+     */
+    public void validar(int pid, long direccion, int bytes) {
+        Contexto c = procesos.get(pid);
+        if (c == null) throw new EventoInvalidoException("P" + pid + " no tiene tabla de páginas en la MMU");
+        if (bytes < 1) throw new EventoInvalidoException("Un acceso debe ser de al menos 1 byte");
+        EspacioProceso.Segmento s = c.espacio().segmentoDe(direccion);
+        if (s == null || bytes > c.espacio().limite(s) - direccion) throw new AccesoIlegalException(pid, direccion);
+        for (long p = pagina(direccion), ultima = pagina(direccion + bytes - 1); p <= ultima; p++)
+            if (c.tabla().entrada(p) == null) throw new AccesoIlegalException(pid, direccion);
     }
 
     public long bloque() { return bloque; }
