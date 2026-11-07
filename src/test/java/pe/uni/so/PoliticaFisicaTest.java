@@ -230,4 +230,32 @@ class PoliticaFisicaTest {
         assertEquals(0, t.pagina());
         assertTrue(g.marcosDe(1).containsAll(List.of(0L, 1L)));
     }
+
+    @Test @DisplayName("[M1][M7] Un acceso grande bajo demanda (125 MiB en páginas de 32 KiB) se atiende con un fallo por página")
+    void accesoGrandeBajoDemanda() {
+        long b = 32 * KIB;
+        EspacioProceso e = new EspacioProceso(130L * 1024 * KIB, 0.20, 0.10, b);   // texto de 4 160 páginas
+        GestorMemoria g = new GestorMemoria(5000, b, EstrategiaAsignacion.primerAjuste(), Reemplazo.LRU);
+        g.repartirCuotas(Map.of(1, e));
+        g.asignar(1, e);
+        long inicio = System.nanoTime();
+        var t = g.acceder(1, 0x0, (int) (125L * 1024 * KIB), false);  // 4 000 páginas, ninguna residente
+        long ms = (System.nanoTime() - inicio) / 1_000_000;
+        assertEquals(4000, g.fallosPagina());
+        assertEquals(0, t.pagina());
+        assertTrue(ms < 5000, "el acceso tardó " + ms + " ms");
+    }
+
+    @Test @DisplayName("[M1][M7] Con FIFO, si el fallo expulsa una página anterior del mismo acceso, esa página vuelve a cargarse")
+    void prefijoExpulsadoConFifo() {
+        GestorMemoria g = new GestorMemoria(2, B, EstrategiaAsignacion.primerAjuste(), Reemplazo.FIFO);
+        g.repartirCuotas(Map.of(1, espacio()));                      // cuota 2
+        g.asignar(1, espacio());
+        g.acceder(1, 0x0, 1, false);                                  // página 0 (la más antigua)
+        g.acceder(1, 2 * B, 1, false);                                // página 2
+        var t = g.acceder(1, B - 2, 4, false);                        // páginas 0 y 1: la 1 expulsa a la 0 y la 0 vuelve
+        assertEquals(4, g.fallosPagina());
+        assertEquals(0, t.pagina());
+        assertTrue(g.marcosDe(1).containsAll(List.of(0L, 1L)));
+    }
 }

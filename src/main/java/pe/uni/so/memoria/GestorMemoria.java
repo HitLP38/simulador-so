@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import pe.uni.so.excepciones.AccesoIlegalException;
 import pe.uni.so.excepciones.EventoInvalidoException;
-import pe.uni.so.excepciones.FalloPaginaException;
 import pe.uni.so.excepciones.MemoriaInsuficienteException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 
@@ -257,36 +256,44 @@ public class GestorMemoria {
 
     /**
      * [M1][M4] Acceso del proceso a memoria. Bajo demanda, cada fallo de página (0x0E) se atiende
-     * cargando la página en un marco de su cuota y el acceso se reintenta; el reemplazo registra
-     * cada referencia (LRU la necesita). Con carga total, un fallo de página no se atiende aquí.
+     * cargando la página en un marco de su cuota y el acceso continúa; el reemplazo registra cada
+     * referencia (LRU la necesita). Con carga total, un fallo de página no se atiende aquí.
+     *
+     * <p>Las páginas del acceso se recorren una sola vez, en orden. Es lo mismo que reintentar la
+     * traducción tras cada fallo (el reintento se detiene en la primera página sin marco), pero sin
+     * volver a validar todo el acceso: si un reemplazo expulsa una página anterior del mismo acceso,
+     * el recorrido vuelve a ella, igual que lo haría el reintento.
      */
     public Mmu.Traduccion acceder(int pid, long direccion, int bytes, boolean escritura) {
         Residente r = exigir(pid);
         mmu.validar(pid, direccion, bytes);                          // primero protección y páginas existentes, sin tocar nada
-        if (r.politica != null) {
-            long paginas = mmu.pagina(direccion + bytes - 1) - mmu.pagina(direccion) + 1;
-            if (paginas > r.politica.cuota()) throw new MemoriaInsuficienteException((int) Math.min(paginas, Integer.MAX_VALUE), r.politica.cuota());
+        if (r.politica == null) return mmu.traducir(pid, direccion, bytes, escritura);   // carga total: el fallo se propaga
+        long primera = mmu.pagina(direccion), ultima = mmu.pagina(direccion + bytes - 1);
+        if (ultima - primera + 1 > r.politica.cuota())
+            throw new MemoriaInsuficienteException((int) Math.min(ultima - primera + 1, Integer.MAX_VALUE), r.politica.cuota());
+        long sinReferenciar = primera;                                // primera página del acceso aún no referenciada
+        for (long p = primera; p <= ultima; ) {
+            if (r.tabla.entrada(p).valida()) { p++; continue; }
+            for (long q = sinReferenciar; q < p; q++) r.politica.referenciar(q);   // prefijo residente: LRU no debe expulsarlo
+            sinReferenciar = Math.max(sinReferenciar, p + 1);       // cada página del prefijo se referencia una sola vez
+            long victima = atenderFallo(r, p);
+            p = victima >= primera && victima < p ? victima : p + 1;  // salió una página anterior del acceso: se vuelve a ella
         }
-        while (true) {
-            try {
-                Mmu.Traduccion t = mmu.traducir(pid, direccion, bytes, escritura);
-                if (r.politica != null)
-                    for (long p = t.pagina(); p <= mmu.pagina(direccion + bytes - 1); p++) r.politica.referenciar(p);
-                return t;
-            } catch (FalloPaginaException f) {
-                if (r.politica == null) throw f;
-                for (long p = mmu.pagina(direccion); p < f.pagina; p++) r.politica.referenciar(p);   // el prefijo residente ya se usó: LRU no debe expulsarlo
-                atenderFallo(r, f.pagina);
-            }
-        }
+        Mmu.Traduccion t = mmu.traducir(pid, direccion, bytes, escritura);   // ya no hay fallos: traduce y marca R y M
+        for (long p = primera; p <= ultima; p++) r.politica.referenciar(p);
+        return t;
     }
 
-    /** [M1][M7] La página entra en un marco de la cuota; si estaba llena, la víctima local pasa a bit i. */
-    private void atenderFallo(Residente r, long pagina) {
+    /**
+     * [M1][M7] La página entra en un marco de la cuota; si estaba llena, la víctima local pasa a bit i.
+     * Devuelve la página expulsada, o −1 si había un marco libre.
+     */
+    private long atenderFallo(Residente r, long pagina) {
         PoliticaFisica.Referencia ref = r.politica.referenciar(pagina);
         if (ref.victima() >= 0) r.tabla.invalidar(ref.victima());
         r.tabla.cargar(pagina, r.propios[ref.marco()]);
         fallosPagina++;
+        return ref.victima();
     }
 
     /** Carga total: pide marcos para las páginas. Bajo demanda: solo las registra en el espacio virtual (bit i). */

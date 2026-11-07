@@ -3,7 +3,9 @@ package pe.uni.so.memoria;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 
 /**
@@ -25,6 +27,8 @@ public class PoliticaFisica {
     private final long[] paginas;          // página que ocupa cada marco local (−1: libre)
     private final long[] ultimoUso;        // LRU: instante de la última referencia
     private final long[] llegada;          // FIFO: instante en que se cargó
+    private final Map<Long, Integer> ubicacion = new HashMap<>();   // página → marco local: búsqueda en O(1)
+    private int ocupados;                  // los marcos libres se llenan en orden 0, 1, 2…
     private long reloj;
     private int fallos, reemplazos;
 
@@ -70,20 +74,23 @@ public class PoliticaFisica {
     public Referencia referenciar(long pagina) {
         if (pagina < 0) throw new ParametroInvalidoException("Página negativa: " + pagina);
         reloj++;
-        int marco = buscar(pagina);
-        if (marco >= 0) {
-            ultimoUso[marco] = reloj;
-            return new Referencia(false, marco, -1);
+        Integer residente = ubicacion.get(pagina);
+        if (residente != null) {
+            ultimoUso[residente] = reloj;
+            return new Referencia(false, residente, -1);
         }
         fallos++;
-        marco = buscar(-1);
+        int marco;
         long victima = -1;
-        if (marco < 0) {
+        if (ocupados < paginas.length) marco = ocupados++;             // queda un marco libre en la cuota
+        else {
             marco = victima();
             victima = paginas[marco];
+            ubicacion.remove(victima);
             reemplazos++;
         }
         paginas[marco] = pagina;
+        ubicacion.put(pagina, marco);
         llegada[marco] = reloj;
         ultimoUso[marco] = reloj;
         return new Referencia(true, marco, victima);
@@ -95,11 +102,6 @@ public class PoliticaFisica {
         int v = 0;
         for (int i = 1; i < criterio.length; i++) if (criterio[i] < criterio[v]) v = i;
         return v;
-    }
-
-    private int buscar(long pagina) {
-        for (int i = 0; i < paginas.length; i++) if (paginas[i] == pagina) return i;
-        return -1;
     }
 
     /** Contenido de cada marco local (null: libre), como las columnas de la tabla de la PC2. */
