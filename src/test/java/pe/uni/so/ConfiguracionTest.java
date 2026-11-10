@@ -296,9 +296,15 @@ class ConfiguracionTest {
         Path rota = carpeta.resolve("rota.maquina");
         Files.writeString(rota, "nombre=Rota\nram=MIB_200\n", StandardCharsets.UTF_8);
         Files.writeString(carpeta.resolve("maquina-del-curso.maquina"), "nombre=Máquina del curso\n", StandardCharsets.UTF_8);
+        Path escapeRoto = carpeta.resolve("escape.maquina");
+        Files.writeString(escapeRoto, "nombre=\\uZZZZ\n", StandardCharsets.UTF_8);       // \\u mal formado
+        Path noUtf8 = carpeta.resolve("binario.maquina");
+        Files.write(noUtf8, new byte[] {'n', '=', (byte) 0xC3, (byte) 0x28, '\n'});       // UTF-8 inválido
         assertEquals(List.of(Maquina.NOMBRE_POR_DEFECTO, "Buena"), repo.listar().stream().map(Maquina::nombre).toList());
         assertEquals(Maquina.porDefecto(), repo.porDefecto());        // la por defecto dañada vuelve a la de fábrica
-        assertEquals(2, repo.archivosDanados().size());
+        assertEquals(4, repo.archivosDanados().size());
+        assertTrue(repo.archivosDanados().get(escapeRoto).startsWith("escape.maquina: formato inválido"));
+        assertTrue(repo.archivosDanados().get(noUtf8).contains("UTF-8"));
         assertTrue(repo.archivosDanados().get(rota).startsWith("rota.maquina"));
         assertTrue(repo.existe("Buena"));
         repo.eliminarArchivoDanado(rota);

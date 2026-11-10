@@ -3,6 +3,7 @@ package pe.uni.so.configuracion;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -63,10 +64,14 @@ public record Maquina(String nombre, Configuracion configuracion) {
 
     public static Maquina leer(Path archivo) throws IOException {
         Properties p = new Properties();
+        String origen = archivo.getFileName().toString();
         try (Reader r = Files.newBufferedReader(archivo, StandardCharsets.UTF_8)) {
             p.load(r);
+        } catch (CharacterCodingException ex) {                       // bytes que no son UTF-8 válido
+            throw new ParametroInvalidoException(origen + ": el archivo no está en UTF-8 válido");
+        } catch (IllegalArgumentException ex) {                       // escape \\uXXXX mal formado
+            throw new ParametroInvalidoException(origen + ": formato inválido (" + ex.getMessage() + ")");
         }
-        String origen = archivo.getFileName().toString();
         Map<Dispositivo, VelocidadDispositivo> dispositivos = new EnumMap<>(Dispositivo.class);
         for (Dispositivo d : Dispositivo.values())
             dispositivos.put(d, opcion(p, origen, "dispositivo." + d.name(), VelocidadDispositivo.class));
