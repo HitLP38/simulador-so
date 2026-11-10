@@ -58,7 +58,6 @@ public class Kernel {
     private final Colas colas = new Colas();
     private final Despachador despachador;
     private final double instruccionesPorTick;             // [G5] velocidad de la CPU
-    private double credito;                                // instrucciones acumuladas por una CPU lenta
     private final List<Pcb> procesos;
     private final List<Pcb> porLlegar;
     private final List<Evento> bitacora = new ArrayList<>();
@@ -295,7 +294,7 @@ public class Kernel {
             despachador.despachar(colas, politica, t);
             entrante = colas.enCpu();
         }
-        if (entrante != null) { entrante.marcarInicio(t); usado = 0; credito = 0; quantumDespacho = politica.quantum(); }
+        if (entrante != null) { entrante.marcarInicio(t); usado = 0; quantumDespacho = politica.quantum(); }
     }
 
     private void ejecutar() {
@@ -304,10 +303,7 @@ public class Kernel {
         Pcb actual = colas.enCpu();
         gantt.append(actual == null ? "-" : actual.pid).append(' ');
         if (actual == null) return;
-        credito += instruccionesPorTick;                   // [G5] lo que alcanza a ejecutar la CPU en este tick
-        int n = (int) Math.min(Math.floor(credito), actual.restante());
-        credito -= n;
-        actual.usarCpu(n);
+        actual.ejecutarTick(instruccionesPorTick);         // [G5] lo que alcanza a ejecutar la CPU en este tick
         usado++;
         actual.fijarQuantumRestante(quantumDespacho == Integer.MAX_VALUE ? 0 : quantumDespacho - usado);
         if (actual.restante() == 0) momentoE(actual);

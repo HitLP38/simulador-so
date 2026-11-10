@@ -210,7 +210,7 @@ class ConfiguracionTest {
         Map<Dispositivo, VelocidadDispositivo> mixta = Configuracion.dispositivos(VelocidadDispositivo.NORMAL);
         mixta.put(Dispositivo.RED, VelocidadDispositivo.RAPIDO);
         Maquina m = new Maquina("PC modesta", new Configuracion(Ram.MIB_256, Pagina.KIB_128, Cpu.MHZ_500,
-                Politica.SRTF, 7, 0.5, 3, Estrategia.PEOR_AJUSTE, Carga.BAJO_DEMANDA, Reemplazo.FIFO, mixta, 2026));
+                Politica.SRTF, 7, 0.5, 3, Estrategia.PEOR_AJUSTE, Carga.BAJO_DEMANDA, Reemplazo.FIFO, mixta, 5_000_000_000L));   // semilla > int
         Path archivo = carpetaTemporal().resolve("pc-modesta.maquina");
         m.escribir(archivo);
         assertEquals(m, Maquina.leer(archivo));
@@ -261,5 +261,48 @@ class ConfiguracionTest {
         assertThrows(EventoInvalidoException.class, () -> repo.eliminar("Zeta"));
         assertThrows(ParametroInvalidoException.class, () -> new Maquina("  ", d));
         assertThrows(ParametroInvalidoException.class, () -> new Maquina("x".repeat(41), d));
+    }
+
+    @Test @DisplayName("[G5] Con 500 MHz y RR q=1, el avance parcial de cada proceso se conserva al expropiarlo: ambos progresan")
+    void cpuLentaConQuantumUno() {
+        Pcb a = proceso(1, 0, 2, 64 * KIB), b = proceso(2, 0, 2, 64 * KIB);
+        Kernel k = con(Cpu.MHZ_500, Politica.ROUND_ROBIN, 1).crearKernel(List.of(a, b));
+        k.ejecutarTodo();
+        assertEquals("1 2 1 2 1 2 1 2", k.gantt());                   // cada instrucción toma 2 turnos de su proceso
+        assertEquals(7, a.fin());
+        assertEquals(8, b.fin());
+        assertEquals(4, a.cpu());
+        assertEquals(4, b.cpu());
+    }
+
+    @Test @DisplayName("[G5] Una CPU rápida no le pasa instrucciones sobrantes al siguiente proceso")
+    void cpuRapidaSinSobrantes() {
+        Pcb a = proceso(1, 0, 3, 64 * KIB), b = proceso(2, 0, 2, 64 * KIB);
+        Kernel k = con(Cpu.GHZ_2, Politica.FCFS, 1).crearKernel(List.of(a, b));
+        k.ejecutarTodo();
+        assertEquals("1 1 2", k.gantt());                              // A: 2 + 1 (sobra 1, se descarta); B: 2
+        assertEquals(2, a.fin());
+        assertEquals(3, b.fin());
+        Pcb c = proceso(3, 0, 1, 64 * KIB);
+        assertEquals(1, c.ejecutarTick(3.0));                          // una de 3 posibles: termina y no guarda avance
+        assertEquals(0, c.restante());
+    }
+
+    @Test @DisplayName("[G5] Un archivo de máquina dañado se omite al listar y se informa; el gestor sigue usable")
+    void archivoDanadoNoBloqueaElGestor() throws IOException {
+        Path carpeta = carpetaTemporal();
+        RepositorioMaquinas repo = new RepositorioMaquinas(carpeta);
+        repo.guardar(new Maquina("Buena", Configuracion.porDefecto()));
+        Path rota = carpeta.resolve("rota.maquina");
+        Files.writeString(rota, "nombre=Rota\nram=MIB_200\n", StandardCharsets.UTF_8);
+        Files.writeString(carpeta.resolve("maquina-del-curso.maquina"), "nombre=Máquina del curso\n", StandardCharsets.UTF_8);
+        assertEquals(List.of(Maquina.NOMBRE_POR_DEFECTO, "Buena"), repo.listar().stream().map(Maquina::nombre).toList());
+        assertEquals(Maquina.porDefecto(), repo.porDefecto());        // la por defecto dañada vuelve a la de fábrica
+        assertEquals(2, repo.archivosDanados().size());
+        assertTrue(repo.archivosDanados().get(rota).startsWith("rota.maquina"));
+        assertTrue(repo.existe("Buena"));
+        repo.eliminarArchivoDanado(rota);
+        assertFalse(Files.exists(rota));
+        assertThrows(EventoInvalidoException.class, () -> repo.eliminarArchivoDanado(carpeta.resolve("buena.maquina")));
     }
 }

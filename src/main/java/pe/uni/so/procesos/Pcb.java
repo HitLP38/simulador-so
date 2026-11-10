@@ -30,6 +30,7 @@ public class Pcb {
     private int inicio = -1, fin = -1, espera = 0, cpu = 0, bloqueado = 0;
     private int pedidosES, interrupciones;   // [E3] pedidos de E/S pendientes y llamadas/IRQ propias
     private CodigoError error;              // [P9] null si terminó normalmente
+    private double avance;                  // [G5] fracción de instrucción hecha por una CPU lenta (contexto)
     private EspacioProceso espacio;         // [I1] segmentos del proceso; null en las pruebas sin memoria real
     private boolean cancelacionPendiente;   // [E9] señal CANCELAR aún no entregada
     private int quantumRestante;
@@ -63,6 +64,23 @@ public class Pcb {
      * (0 con una CPU lenta que necesita dos ticks por instrucción, 2 o más con una rápida).
      * El tiempo de CPU se cuenta en ticks, así retorno = CPU + espera + bloqueado sigue valiendo.
      */
+    /**
+     * [G5] Un tick con la CPU a una velocidad dada (instrucciones por tick). El avance parcial de
+     * una instrucción (CPU de 500 MHz: media instrucción por tick) es parte del contexto del
+     * proceso: se conserva si lo expropian y se descarta cuando termina, así ningún proceso le
+     * pasa instrucciones sobrantes a otro. Devuelve cuántas instrucciones completó en el tick.
+     */
+    public int ejecutarTick(double instruccionesPorTick) {
+        if (!(instruccionesPorTick > 0) || Double.isInfinite(instruccionesPorTick))
+            throw new ParametroInvalidoException("La velocidad de la CPU debe ser > 0 instrucciones por tick");
+        avance += instruccionesPorTick;
+        int n = (int) Math.min(Math.floor(avance), restante);
+        avance -= n;
+        usarCpu(n);
+        if (restante == 0) avance = 0;
+        return n;
+    }
+
     public void usarCpu(int instrucciones) {
         if (instrucciones < 0 || instrucciones > restante)
             throw new ParametroInvalidoException(this + ": no puede ejecutar " + instrucciones + " instrucciones (le quedan " + restante + ")");

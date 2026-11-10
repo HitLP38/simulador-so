@@ -7,11 +7,14 @@ import java.nio.file.Path;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 import pe.uni.so.excepciones.EventoInvalidoException;
+import pe.uni.so.excepciones.ParametroInvalidoException;
 
 /**
  * [G5] Las máquinas guardadas, como el gestor de máquinas virtuales: un archivo por máquina en
@@ -35,17 +38,21 @@ public class RepositorioMaquinas {
 
     public Path carpeta() { return carpeta; }
 
-    /** La máquina por defecto primero (editada o de fábrica) y luego las demás por nombre. */
+    /**
+     * La máquina por defecto primero (editada o de fábrica) y luego las demás por nombre. Un
+     * archivo dañado (editado a mano, truncado) se omite para que el gestor siga usable; la
+     * interfaz los informa con {@link #archivosDanados()}.
+     */
     public List<Maquina> listar() {
         List<Maquina> otras = new ArrayList<>();
-        if (Files.isDirectory(carpeta)) {
-            try (Stream<Path> archivos = Files.list(carpeta)) {
-                for (Path a : archivos.filter(a -> a.getFileName().toString().endsWith(EXTENSION)).toList()) {
-                    Maquina m = Maquina.leer(a);
-                    if (!m.esPorDefecto()) otras.add(m);
-                }
+        for (Path a : archivos()) {
+            try {
+                Maquina m = Maquina.leer(a);
+                if (!m.esPorDefecto()) otras.add(m);
+            } catch (ParametroInvalidoException ex) {
+                // archivo dañado: se omite y queda en archivosDanados()
             } catch (IOException ex) {
-                throw new UncheckedIOException("No se pudo leer la carpeta de máquinas " + carpeta, ex);
+                throw new UncheckedIOException("No se pudo leer la máquina " + a, ex);
             }
         }
         otras.sort(Comparator.comparing(m -> m.nombre().toLowerCase(Locale.ROOT)));
@@ -55,8 +62,43 @@ public class RepositorioMaquinas {
         return todas;
     }
 
+    /** La máquina por defecto editada; si nunca se editó o su archivo está dañado, la de fábrica. */
     public Maquina porDefecto() {
-        return leerSiExiste(archivo(Maquina.NOMBRE_POR_DEFECTO)).orElseGet(Maquina::porDefecto);
+        try {
+            return leerSiExiste(archivo(Maquina.NOMBRE_POR_DEFECTO)).orElseGet(Maquina::porDefecto);
+        } catch (ParametroInvalidoException ex) {
+            return Maquina.porDefecto();
+        }
+    }
+
+    /** Archivos de máquina que no se pueden leer, con el motivo, para mostrarlos al usuario. */
+    public Map<Path, String> archivosDanados() {
+        Map<Path, String> danados = new LinkedHashMap<>();
+        for (Path a : archivos()) {
+            try {
+                Maquina.leer(a);
+            } catch (ParametroInvalidoException ex) {
+                danados.put(a, ex.getMessage());
+            } catch (IOException ex) {
+                danados.put(a, "no se pudo leer: " + ex.getMessage());
+            }
+        }
+        return danados;
+    }
+
+    /** Borra un archivo dañado de la carpeta de máquinas (no se puede elegir desde listar()). */
+    public void eliminarArchivoDanado(Path archivo) {
+        if (!archivosDanados().containsKey(archivo)) throw new EventoInvalidoException(archivo.getFileName() + " no es un archivo dañado de esta carpeta");
+        borrar(archivo);
+    }
+
+    private List<Path> archivos() {
+        if (!Files.isDirectory(carpeta)) return List.of();
+        try (Stream<Path> archivos = Files.list(carpeta)) {
+            return archivos.filter(a -> a.getFileName().toString().endsWith(EXTENSION)).sorted().toList();
+        } catch (IOException ex) {
+            throw new UncheckedIOException("No se pudo leer la carpeta de máquinas " + carpeta, ex);
+        }
     }
 
     public Optional<Maquina> buscar(String nombre) {

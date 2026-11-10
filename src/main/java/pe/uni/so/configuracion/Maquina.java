@@ -82,7 +82,7 @@ public record Maquina(String nombre, Configuracion configuracion) {
                 opcion(p, origen, "carga", Configuracion.Carga.class),
                 opcion(p, origen, "reemplazo", Reemplazo.class),
                 dispositivos,
-                entero(p, origen, "semilla"));
+                largo(p, origen, "semilla"));
         return new Maquina(texto(p, origen, "nombre"), c);
     }
 
@@ -105,6 +105,15 @@ public record Maquina(String nombre, Configuracion configuracion) {
         String v = texto(p, origen, clave);
         try {
             return Integer.parseInt(v);
+        } catch (NumberFormatException ex) {
+            throw new ParametroInvalidoException(origen + ": «" + v + "» no es un número entero para «" + clave + "»");
+        }
+    }
+
+    private static long largo(Properties p, String origen, String clave) {
+        String v = texto(p, origen, clave);
+        try {
+            return Long.parseLong(v);
         } catch (NumberFormatException ex) {
             throw new ParametroInvalidoException(origen + ": «" + v + "» no es un número entero para «" + clave + "»");
         }
