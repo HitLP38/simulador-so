@@ -56,7 +56,20 @@ public class Pcb {
     }
 
     /** Ejecuta una instrucción (una unidad de tiempo). */
-    public void ejecutarInstruccion() { restante--; cpu++; pc += 4; }
+    public void ejecutarInstruccion() { usarCpu(1); }
+
+    /**
+     * [G5] Un tick con la CPU: ejecuta las instrucciones que alcanza a hacer la CPU en ese tick
+     * (0 con una CPU lenta que necesita dos ticks por instrucción, 2 o más con una rápida).
+     * El tiempo de CPU se cuenta en ticks, así retorno = CPU + espera + bloqueado sigue valiendo.
+     */
+    public void usarCpu(int instrucciones) {
+        if (instrucciones < 0 || instrucciones > restante)
+            throw new ParametroInvalidoException(this + ": no puede ejecutar " + instrucciones + " instrucciones (le quedan " + restante + ")");
+        restante -= instrucciones;
+        pc += 4 * instrucciones;
+        cpu++;
+    }
 
     /** [P5] El planificador de mediano plazo saca al proceso de memoria (swap-out). */
     public void suspender() {

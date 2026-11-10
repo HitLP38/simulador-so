@@ -22,6 +22,9 @@ public class Despachador {
         this.costo = costo;
     }
 
+    /** Costo de cada cambio de contexto, en ms. */
+    public double costo() { return costo; }
+
     /**
      * Cambio de contexto en el orden del taller, ej. 10 b. Si la CPU está ocupada, el proceso
      * saliente se guarda y vuelve a listos (expropiación o fin de quantum); si quedó libre por

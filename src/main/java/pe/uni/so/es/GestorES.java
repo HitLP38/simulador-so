@@ -4,6 +4,7 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.interrupciones.ControladorInterrupciones;
 import pe.uni.so.procesos.Colas;
 import pe.uni.so.procesos.Pcb;
@@ -30,11 +31,21 @@ public class GestorES {
     private final ControladorInterrupciones pic;
     private final Map<Pcb, SolicitudES> solicitudes = new HashMap<>();
     private final Map<Dispositivo, Servicio> enServicio = new EnumMap<>(Dispositivo.class);
+    private final Map<Dispositivo, VelocidadDispositivo> velocidades = new EnumMap<>(Dispositivo.class);
 
     public GestorES(Colas colas, ControladorInterrupciones pic) {
         this.colas = colas;
         this.pic = pic;
+        for (Dispositivo d : Dispositivo.values()) velocidades.put(d, VelocidadDispositivo.NORMAL);
     }
+
+    /** [G5] Velocidad de un dispositivo: se aplica a los pedidos que empiecen desde ahora. */
+    public void fijarVelocidad(Dispositivo d, VelocidadDispositivo v) {
+        if (d == null || v == null) throw new ParametroInvalidoException("Falta el dispositivo o su velocidad");
+        velocidades.put(d, v);
+    }
+
+    public VelocidadDispositivo velocidad(Dispositivo d) { return velocidades.get(d); }
 
     /** [E4] Registra el bloque de petición de un proceso ya bloqueado en la cola del dispositivo. */
     public void registrar(Pcb p, SolicitudES s) { solicitudes.put(p, s); }
@@ -50,7 +61,7 @@ public class GestorES {
             if (s == null || s.proceso != primero) {               // empieza el siguiente de la cola
                 SolicitudES pedido = solicitudes.get(primero);
                 if (pedido == null) continue;                        // pedido manual: no se atiende solo
-                s = new Servicio(primero, pedido.duracion());
+                s = new Servicio(primero, velocidades.get(d).ajustar(pedido.duracion()));
                 enServicio.put(d, s);
             }
             if (s.restante == 0) continue;                           // ya terminó; su IRQ espera (p. ej. enmascarada)
