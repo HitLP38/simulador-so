@@ -113,7 +113,7 @@ class ConfiguracionTest {
                 Estrategia.PRIMER_AJUSTE, Carga.TOTAL, Reemplazo.LRU, normal, 0).costoDespacho(), 0);
     }
 
-    @Test @DisplayName("[G5][P6] La configuración arma el Kernel: RR q=2 reproduce el taller ej. 26")
+    @Test @DisplayName("[P7][G5][P6] La configuración arma el Kernel: RR q=2 reproduce el taller ej. 26")
     void kernelDeLaMaquina() {
         Kernel k = con(Cpu.GHZ_1, Politica.ROUND_ROBIN, 2).crearKernel(List.of(
                 proceso(1, 0, 7, 64 * KIB), proceso(2, 0, 4, 64 * KIB), proceso(3, 0, 2, 64 * KIB)));
@@ -140,7 +140,7 @@ class ConfiguracionTest {
         assertEquals(lento.retorno(), lento.cpu() + lento.espera() + lento.bloqueado());
     }
 
-    @Test @DisplayName("[G5] Con 2 GHz y RR q=2 cada turno avanza 4 instrucciones y nadie ejecuta de más")
+    @Test @DisplayName("[P7][G5] Con 2 GHz y RR q=2 cada turno avanza 4 instrucciones y nadie ejecuta de más")
     void cpuRapidaConQuantum() {
         Pcb a = proceso(1, 0, 5, 64 * KIB), b = proceso(2, 0, 3, 64 * KIB);
         Kernel k = con(Cpu.GHZ_2, Politica.ROUND_ROBIN, 2).crearKernel(List.of(a, b));
@@ -263,7 +263,7 @@ class ConfiguracionTest {
         assertThrows(ParametroInvalidoException.class, () -> new Maquina("x".repeat(41), d));
     }
 
-    @Test @DisplayName("[G5] Con 500 MHz y RR q=1, el avance parcial de cada proceso se conserva al expropiarlo: ambos progresan")
+    @Test @DisplayName("[P7][G5] Con 500 MHz y RR q=1, el avance parcial de cada proceso se conserva al expropiarlo: ambos progresan")
     void cpuLentaConQuantumUno() {
         Pcb a = proceso(1, 0, 2, 64 * KIB), b = proceso(2, 0, 2, 64 * KIB);
         Kernel k = con(Cpu.MHZ_500, Politica.ROUND_ROBIN, 1).crearKernel(List.of(a, b));
@@ -307,6 +307,10 @@ class ConfiguracionTest {
         assertTrue(repo.archivosDanados().get(noUtf8).contains("UTF-8"));
         assertTrue(repo.archivosDanados().get(rota).startsWith("rota.maquina"));
         assertTrue(repo.existe("Buena"));
+        Path carpetaComoArchivo = carpeta.resolve("carpeta.maquina");
+        Files.createDirectory(carpetaComoArchivo);                    // ilegible como archivo: IOException
+        assertEquals(List.of(Maquina.NOMBRE_POR_DEFECTO, "Buena"), repo.listar().stream().map(Maquina::nombre).toList());
+        assertTrue(repo.archivosDanados().containsKey(carpetaComoArchivo));
         repo.eliminarArchivoDanado(rota);
         assertFalse(Files.exists(rota));
         assertThrows(EventoInvalidoException.class, () -> repo.eliminarArchivoDanado(carpeta.resolve("buena.maquina")));

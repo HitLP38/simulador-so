@@ -60,11 +60,6 @@ public class Pcb {
     public void ejecutarInstruccion() { usarCpu(1); }
 
     /**
-     * [G5] Un tick con la CPU: ejecuta las instrucciones que alcanza a hacer la CPU en ese tick
-     * (0 con una CPU lenta que necesita dos ticks por instrucción, 2 o más con una rápida).
-     * El tiempo de CPU se cuenta en ticks, así retorno = CPU + espera + bloqueado sigue valiendo.
-     */
-    /**
      * [G5] Un tick con la CPU a una velocidad dada (instrucciones por tick). El avance parcial de
      * una instrucción (CPU de 500 MHz: media instrucción por tick) es parte del contexto del
      * proceso: se conserva si lo expropian y se descarta cuando termina, así ningún proceso le
@@ -81,6 +76,11 @@ public class Pcb {
         return n;
     }
 
+    /**
+     * [G5] Cuenta un tick de CPU y completa {@code instrucciones} (de 0 al restante). El contador
+     * cpu mide TICKS en la CPU, no instrucciones: cada llamada suma 1 aunque se completen 0 (CPU
+     * lenta) o varias (CPU rápida). Así retorno = CPU + espera + bloqueado sigue valiendo.
+     */
     public void usarCpu(int instrucciones) {
         if (instrucciones < 0 || instrucciones > restante)
             throw new ParametroInvalidoException(this + ": no puede ejecutar " + instrucciones + " instrucciones (le quedan " + restante + ")");

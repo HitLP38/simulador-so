@@ -49,10 +49,8 @@ public class RepositorioMaquinas {
             try {
                 Maquina m = Maquina.leer(a);
                 if (!m.esPorDefecto()) otras.add(m);
-            } catch (ParametroInvalidoException ex) {
-                // archivo dañado: se omite y queda en archivosDanados()
-            } catch (IOException ex) {
-                throw new UncheckedIOException("No se pudo leer la máquina " + a, ex);
+            } catch (ParametroInvalidoException | IOException ex) {
+                // archivo dañado o ilegible (p. ej. sin permiso de lectura): se omite y queda en archivosDanados()
             }
         }
         otras.sort(Comparator.comparing(m -> m.nombre().toLowerCase(Locale.ROOT)));
@@ -66,7 +64,7 @@ public class RepositorioMaquinas {
     public Maquina porDefecto() {
         try {
             return leerSiExiste(archivo(Maquina.NOMBRE_POR_DEFECTO)).orElseGet(Maquina::porDefecto);
-        } catch (ParametroInvalidoException ex) {
+        } catch (ParametroInvalidoException | UncheckedIOException ex) {   // dañada o ilegible: la de fábrica
             return Maquina.porDefecto();
         }
     }
