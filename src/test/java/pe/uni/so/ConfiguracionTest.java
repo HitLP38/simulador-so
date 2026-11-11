@@ -311,6 +311,8 @@ class ConfiguracionTest {
         Files.createDirectory(carpetaComoArchivo);                    // ilegible como archivo: IOException
         assertEquals(List.of(Maquina.NOMBRE_POR_DEFECTO, "Buena"), repo.listar().stream().map(Maquina::nombre).toList());
         assertTrue(repo.archivosDanados().containsKey(carpetaComoArchivo));
+        assertThrows(EventoInvalidoException.class, () -> repo.clonar("Buena", "Rota"));     // no pisa un archivo dañado
+        assertTrue(Files.exists(rota));
         repo.eliminarArchivoDanado(rota);
         assertFalse(Files.exists(rota));
         assertThrows(EventoInvalidoException.class, () -> repo.eliminarArchivoDanado(carpeta.resolve("buena.maquina")));

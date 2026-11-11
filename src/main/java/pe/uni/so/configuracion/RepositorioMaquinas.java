@@ -119,7 +119,8 @@ public class RepositorioMaquinas {
     /** Copia una máquina con otro nombre, que no debe existir. */
     public Maquina clonar(String origen, String nuevoNombre) {
         Maquina base = buscar(origen).orElseThrow(() -> new EventoInvalidoException("No existe la máquina «" + origen + "»"));
-        if (existe(nuevoNombre)) throw new EventoInvalidoException("Ya existe una máquina llamada «" + nuevoNombre + "»");
+        if (existe(nuevoNombre) || Files.exists(archivo(nuevoNombre)))   // también un archivo ilegible o dañado con ese nombre
+            throw new EventoInvalidoException("Ya existe una máquina llamada «" + nuevoNombre + "»");
         Maquina copia = base.conNombre(nuevoNombre);
         guardar(copia);
         return copia;
