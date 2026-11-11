@@ -2,6 +2,7 @@ package pe.uni.so.configuracion;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -202,6 +203,44 @@ public record Configuracion(Ram ram, Pagina pagina, Cpu cpu,
         if (carga.usaReemplazo() && procesos.size() > marcos())
             errores.add("Con paginación bajo demanda hace falta al menos 1 marco por proceso (" + procesos.size() + " procesos, " + marcos() + " marcos)");
         return errores;
+    }
+
+    /**
+     * [G5][I6] Cuántos procesos de la carga pueden estar residentes a la vez en esta máquina.
+     *
+     * @param procesos    procesos de la carga
+     * @param porGrado    límite del grado de multiprogramación
+     * @param porRam      cuántos caben en la RAM a la vez (en orden de llegada; bajo demanda, 1 marco cada uno)
+     * @param simultaneos el menor de los límites: los que pueden estar dentro a la vez
+     * @param enEspera    los que esperarían en Nuevo si llegaran todos juntos
+     */
+    public record Capacidad(int procesos, int porGrado, int porRam, int simultaneos, int enEspera) {
+        public String resumen() {
+            String limite = simultaneos == procesos ? "todos caben" : porGrado <= porRam ? "limita el grado" : "limita la RAM";
+            return "Caben " + simultaneos + " de " + procesos + " a la vez (grado " + porGrado + ", RAM " + porRam + "; " + limite + ")"
+                    + (enEspera > 0 ? ". Si llegan todos juntos, " + enEspera + " esperan en Nuevo" : "");
+        }
+    }
+
+    /** Resumen de capacidad antes de iniciar: lo que se puede predecir y luego comprobar en la simulación. */
+    public Capacidad capacidad(List<Pcb> procesos) {
+        List<Pcb> validos = procesos == null ? List.of() : procesos.stream()
+                .filter(p -> p.espacio() != null && p.espacio().bloque() == pagina.bytes)
+                .sorted(Comparator.comparingInt(p -> p.llegada)).toList();
+        int porRam;
+        if (carga.usaReemplazo()) porRam = Math.min(marcos(), validos.size());
+        else {
+            long usados = 0;
+            porRam = 0;
+            for (Pcb p : validos) {
+                int k = GestorMemoria.paginasIniciales(p.espacio());
+                if (usados + k > marcos()) break;
+                usados += k;
+                porRam++;
+            }
+        }
+        int simultaneos = Math.min(Math.min(grado, porRam), validos.size());
+        return new Capacidad(validos.size(), grado, porRam, simultaneos, validos.size() - simultaneos);
     }
 
     public PoliticaPlanificacion crearPolitica() {
