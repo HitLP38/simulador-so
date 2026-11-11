@@ -214,6 +214,10 @@ class ConfiguracionTest {
         Path archivo = carpetaTemporal().resolve("pc-modesta.maquina");
         m.escribir(archivo);
         assertEquals(m, Maquina.leer(archivo));
+        assertThrows(java.nio.file.FileAlreadyExistsException.class, () -> Maquina.porDefecto().escribir(archivo, true));
+        assertEquals(m, Maquina.leer(archivo));                         // la creación exclusiva no lo sobrescribió
+        Maquina.porDefecto().escribir(archivo);                         // guardar (editar) sí reemplaza
+        assertEquals(Maquina.porDefecto(), Maquina.leer(archivo));
     }
 
     @Test @DisplayName("[G5] Un archivo con un valor inválido o incompleto se rechaza con un mensaje claro")

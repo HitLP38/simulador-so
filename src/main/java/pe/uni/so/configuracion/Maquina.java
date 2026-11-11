@@ -6,7 +6,9 @@ import java.io.Writer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Properties;
@@ -39,7 +41,15 @@ public record Maquina(String nombre, Configuracion configuracion) {
     /** La misma máquina con otro nombre (para clonar). */
     public Maquina conNombre(String otro) { return new Maquina(otro, configuracion); }
 
-    public void escribir(Path archivo) throws IOException {
+    /** Crea o reemplaza el archivo de la máquina (editar). */
+    public void escribir(Path archivo) throws IOException { escribir(archivo, false); }
+
+    /**
+     * Escribe la máquina. Con {@code soloSiNoExiste} el archivo se crea de forma exclusiva
+     * (CREATE_NEW): si otro ya lo creó, lanza {@link java.nio.file.FileAlreadyExistsException}
+     * en vez de sobrescribirlo.
+     */
+    public void escribir(Path archivo, boolean soloSiNoExiste) throws IOException {
         Configuracion c = configuracion;
         Properties p = new Properties();
         p.setProperty("nombre", nombre);
@@ -57,7 +67,10 @@ public record Maquina(String nombre, Configuracion configuracion) {
         p.setProperty("semilla", Long.toString(c.semilla()));
         Path carpeta = archivo.toAbsolutePath().getParent();
         if (carpeta != null) Files.createDirectories(carpeta);
-        try (Writer w = Files.newBufferedWriter(archivo, StandardCharsets.UTF_8)) {
+        OpenOption[] opciones = soloSiNoExiste
+                ? new OpenOption[] {StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE}
+                : new OpenOption[] {StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE};
+        try (Writer w = Files.newBufferedWriter(archivo, StandardCharsets.UTF_8, opciones)) {
             p.store(w, "Maquina del simulador de SO (SW407)");
         }
     }

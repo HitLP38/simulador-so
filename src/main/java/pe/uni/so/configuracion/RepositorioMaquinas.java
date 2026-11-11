@@ -2,6 +2,7 @@ package pe.uni.so.configuracion;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.Normalizer;
@@ -122,7 +123,13 @@ public class RepositorioMaquinas {
         if (existe(nuevoNombre) || Files.exists(archivo(nuevoNombre)))   // también un archivo ilegible o dañado con ese nombre
             throw new EventoInvalidoException("Ya existe una máquina llamada «" + nuevoNombre + "»");
         Maquina copia = base.conNombre(nuevoNombre);
-        guardar(copia);
+        try {
+            copia.escribir(archivo(nuevoNombre), true);               // CREATE_NEW: nunca pisa un archivo creado entre medio
+        } catch (FileAlreadyExistsException ex) {
+            throw new EventoInvalidoException("Ya existe una máquina llamada «" + nuevoNombre + "»");
+        } catch (IOException ex) {
+            throw new UncheckedIOException("No se pudo crear la máquina " + nuevoNombre, ex);
+        }
         return copia;
     }
 
