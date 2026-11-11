@@ -56,7 +56,8 @@ public class Kernel {
     private final PoliticaPlanificacion politica;
     private final PlanificadorLargoPlazo largoPlazo;       // null: memoria sin límite
     private final Colas colas = new Colas();
-    private final Despachador despachador = new Despachador(0);
+    private final Despachador despachador;
+    private final double instruccionesPorTick;             // [G5] velocidad de la CPU
     private final List<Pcb> procesos;
     private final List<Pcb> porLlegar;
     private final List<Evento> bitacora = new ArrayList<>();
@@ -70,6 +71,19 @@ public class Kernel {
     private boolean revisarExpropiacion;                   // hubo un momento c o d en este instante
 
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos, PlanificadorLargoPlazo largoPlazo) {
+        this(politica, procesos, largoPlazo, 0, 1);
+    }
+
+    /**
+     * [G5] Kernel de una máquina configurada: costo de cada cambio de contexto (ms) y velocidad de
+     * la CPU en instrucciones por tick (0,5 = una instrucción cada dos ticks).
+     */
+    public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos, PlanificadorLargoPlazo largoPlazo,
+                  double costoDespacho, double instruccionesPorTick) {
+        if (!(instruccionesPorTick > 0) || Double.isInfinite(instruccionesPorTick))
+            throw new ParametroInvalidoException("La velocidad de la CPU debe ser > 0 instrucciones por tick");
+        this.despachador = new Despachador(costoDespacho);
+        this.instruccionesPorTick = instruccionesPorTick;
         this.politica = politica;
         this.largoPlazo = largoPlazo;
         this.procesos = List.copyOf(procesos);
@@ -289,7 +303,7 @@ public class Kernel {
         Pcb actual = colas.enCpu();
         gantt.append(actual == null ? "-" : actual.pid).append(' ');
         if (actual == null) return;
-        actual.ejecutarInstruccion();
+        actual.ejecutarTick(instruccionesPorTick);         // [G5] lo que alcanza a ejecutar la CPU en este tick
         usado++;
         actual.fijarQuantumRestante(quantumDespacho == Integer.MAX_VALUE ? 0 : quantumDespacho - usado);
         if (actual.restante() == 0) momentoE(actual);

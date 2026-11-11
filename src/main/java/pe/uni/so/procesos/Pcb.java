@@ -30,6 +30,7 @@ public class Pcb {
     private int inicio = -1, fin = -1, espera = 0, cpu = 0, bloqueado = 0;
     private int pedidosES, interrupciones;   // [E3] pedidos de E/S pendientes y llamadas/IRQ propias
     private CodigoError error;              // [P9] null si terminó normalmente
+    private double avance;                  // [G5] fracción de instrucción hecha por una CPU lenta (contexto)
     private EspacioProceso espacio;         // [I1] segmentos del proceso; null en las pruebas sin memoria real
     private boolean cancelacionPendiente;   // [E9] señal CANCELAR aún no entregada
     private int quantumRestante;
@@ -56,7 +57,37 @@ public class Pcb {
     }
 
     /** Ejecuta una instrucción (una unidad de tiempo). */
-    public void ejecutarInstruccion() { restante--; cpu++; pc += 4; }
+    public void ejecutarInstruccion() { usarCpu(1); }
+
+    /**
+     * [G5] Un tick con la CPU a una velocidad dada (instrucciones por tick). El avance parcial de
+     * una instrucción (CPU de 500 MHz: media instrucción por tick) es parte del contexto del
+     * proceso: se conserva si lo expropian y se descarta cuando termina, así ningún proceso le
+     * pasa instrucciones sobrantes a otro. Devuelve cuántas instrucciones completó en el tick.
+     */
+    public int ejecutarTick(double instruccionesPorTick) {
+        if (!(instruccionesPorTick > 0) || Double.isInfinite(instruccionesPorTick))
+            throw new ParametroInvalidoException("La velocidad de la CPU debe ser > 0 instrucciones por tick");
+        avance += instruccionesPorTick;
+        int n = (int) Math.min(Math.floor(avance), restante);
+        avance -= n;
+        usarCpu(n);
+        if (restante == 0) avance = 0;
+        return n;
+    }
+
+    /**
+     * [G5] Cuenta un tick de CPU y completa {@code instrucciones} (de 0 al restante). El contador
+     * cpu mide TICKS en la CPU, no instrucciones: cada llamada suma 1 aunque se completen 0 (CPU
+     * lenta) o varias (CPU rápida). Así retorno = CPU + espera + bloqueado sigue valiendo.
+     */
+    public void usarCpu(int instrucciones) {
+        if (instrucciones < 0 || instrucciones > restante)
+            throw new ParametroInvalidoException(this + ": no puede ejecutar " + instrucciones + " instrucciones (le quedan " + restante + ")");
+        restante -= instrucciones;
+        pc += 4 * instrucciones;
+        cpu++;
+    }
 
     /** [P5] El planificador de mediano plazo saca al proceso de memoria (swap-out). */
     public void suspender() {
