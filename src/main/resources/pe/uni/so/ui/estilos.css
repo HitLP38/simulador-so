@@ -3,17 +3,86 @@
     -fx-font-family: "Segoe UI", "Inter", sans-serif;
     -fx-font-size: 14px;
     -fx-background-color: #0b1120;
+    -fx-base: #1f2937;
+    -fx-control-inner-background: #111827;
+    -fx-accent: #22d3ee;
+    -fx-focus-color: #22d3ee;
+    -fx-faint-focus-color: #22d3ee22;
 }
 .barra { -fx-alignment: center-left; -fx-padding: 0 0 12 0; }
 .label { -fx-text-fill: #e2e8f0; }
 .button {
+    -fx-background-color: #1f2937;
+    -fx-text-fill: #e2e8f0;
+    -fx-background-radius: 8;
+    -fx-border-color: #334155;
+    -fx-border-radius: 8;
+    -fx-padding: 6 14;
+    -fx-cursor: hand;
+}
+.button:hover { -fx-background-color: #273449; }
+.button:disabled { -fx-opacity: 0.4; }
+.boton-primario, .boton-primario:hover {
     -fx-background-color: #22d3ee;
     -fx-text-fill: #0b1120;
     -fx-font-weight: bold;
-    -fx-background-radius: 8;
+    -fx-border-color: transparent;
 }
+.boton-peligro { -fx-text-fill: #fca5a5; -fx-border-color: #7f1d1d; }
 .salida, .salida .content {
     -fx-control-inner-background: #111827;
     -fx-text-fill: #e2e8f0;
     -fx-font-family: "Consolas", monospace;
 }
+
+/* Títulos y textos */
+.titulo { -fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #f8fafc; }
+.titulo-detalle { -fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #f8fafc; }
+.subtitulo { -fx-text-fill: #94a3b8; }
+.nota { -fx-text-fill: #94a3b8; -fx-font-style: italic; }
+.estado { -fx-text-fill: #64748b; -fx-font-size: 12px; }
+
+/* Lista de máquinas (izquierda) */
+.lista-maquinas { -fx-background-color: #111827; -fx-background-radius: 10; -fx-border-color: #1f2937; -fx-border-radius: 10; }
+.lista-maquinas .list-cell { -fx-background-color: transparent; -fx-padding: 10 12; }
+.lista-maquinas .list-cell:filled:hover { -fx-background-color: #1a2436; }
+.lista-maquinas .list-cell:filled:selected { -fx-background-color: #164e63; }
+.nombre-maquina { -fx-font-weight: bold; -fx-text-fill: #f1f5f9; }
+.resumen-maquina { -fx-text-fill: #94a3b8; -fx-font-size: 12px; }
+.insignia { -fx-font-size: 11px; -fx-padding: 1 6; -fx-background-radius: 8; }
+.insignia-defecto { -fx-background-color: #334155; -fx-text-fill: #e2e8f0; }
+.insignia-abierta { -fx-background-color: #14532d; -fx-text-fill: #86efac; }
+
+/* Ficha de la máquina */
+.detalle-scroll, .detalle-scroll > .viewport, .formulario-scroll, .formulario-scroll > .viewport { -fx-background-color: transparent; }
+.tarjeta {
+    -fx-background-color: #111827;
+    -fx-background-radius: 10;
+    -fx-border-color: #1f2937;
+    -fx-border-radius: 10;
+    -fx-padding: 12 16;
+    -fx-min-width: 260;
+}
+.titulo-tarjeta { -fx-text-fill: #22d3ee; -fx-font-weight: bold; }
+.etiqueta-campo { -fx-text-fill: #94a3b8; }
+.valor-campo { -fx-text-fill: #f1f5f9; }
+.dato-calculado { -fx-text-fill: #f1f5f9; -fx-font-weight: bold; }
+
+/* Avisos y errores */
+.caja-avisos { -fx-background-color: #2a1f0b; -fx-background-radius: 8; -fx-padding: 8 12; }
+.caja-errores { -fx-background-color: #2a0f12; -fx-background-radius: 8; -fx-padding: 8 12; }
+.aviso { -fx-text-fill: #fbbf24; }
+.error { -fx-text-fill: #fca5a5; }
+
+/* Archivos dañados */
+.panel-danados > .title > .text { -fx-fill: #fbbf24; }
+.titled-pane > .title { -fx-background-color: #111827; }
+.titled-pane > .title > .text { -fx-fill: #e2e8f0; }
+.titled-pane > .content { -fx-background-color: #0f172a; -fx-border-color: #1f2937; }
+
+/* Diálogos */
+.dialog-pane { -fx-background-color: #0b1120; }
+.dialog-pane > .content.label { -fx-text-fill: #e2e8f0; }
+.dialog-pane .header-panel { -fx-background-color: #111827; }
+.dialog-pane .header-panel .label { -fx-text-fill: #f8fafc; -fx-font-weight: bold; }
+.seccion > .title > .text { -fx-fill: #22d3ee; }
