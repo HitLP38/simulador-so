@@ -8,11 +8,13 @@ import java.nio.file.Path;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
@@ -24,6 +26,9 @@ import pe.uni.so.excepciones.ParametroInvalidoException;
 public class RepositorioMaquinas {
 
     public static final String EXTENSION = ".maquina";
+
+    /** Nombres de dispositivo que Windows reserva incluso con extensión (nul.maquina no es un archivo normal). */
+    private static final Set<String> RESERVADAS_WINDOWS = reservadas();
 
     private final Path carpeta;
 
@@ -108,13 +113,46 @@ public class RepositorioMaquinas {
 
     /** Crea o reemplaza (editar) la máquina con ese nombre. */
     public void guardar(Maquina m) {
-        if (!m.esPorDefecto() && clave(m.nombre()).equals(clave(Maquina.NOMBRE_POR_DEFECTO)))
-            throw new EventoInvalidoException("El nombre «" + m.nombre() + "» está reservado para la máquina por defecto");
+        exigirNombreUsable(m);
         try {
             m.escribir(archivo(m.nombre()));
         } catch (IOException ex) {
             throw new UncheckedIOException("No se pudo guardar la máquina " + m.nombre(), ex);
         }
+    }
+
+    /**
+     * Crea una máquina con un nombre nuevo de forma exclusiva (CREATE_NEW): si otro proceso
+     * acaba de crear ese archivo, falla en vez de sobrescribirlo.
+     */
+    public void crear(Maquina m) {
+        exigirNombreUsable(m);
+        try {
+            m.escribir(archivo(m.nombre()), true);
+        } catch (FileAlreadyExistsException ex) {
+            throw new EventoInvalidoException("Ya existe una máquina llamada «" + m.nombre() + "»");
+        } catch (IOException ex) {
+            throw new UncheckedIOException("No se pudo crear la máquina " + m.nombre(), ex);
+        }
+    }
+
+    /** True si el nombre daría un archivo que Windows no permite (con, prn, aux, nul, com0–9, lpt0–9). */
+    public static boolean nombreReservadoPorWindows(String nombre) { return RESERVADAS_WINDOWS.contains(clave(nombre)); }
+
+    private static void exigirNombreUsable(Maquina m) {
+        if (!m.esPorDefecto() && clave(m.nombre()).equals(clave(Maquina.NOMBRE_POR_DEFECTO)))
+            throw new EventoInvalidoException("El nombre «" + m.nombre() + "» está reservado para la máquina por defecto");
+        if (nombreReservadoPorWindows(m.nombre()))
+            throw new EventoInvalidoException("«" + m.nombre() + "» es un nombre reservado por Windows; usa otro");
+    }
+
+    private static Set<String> reservadas() {
+        Set<String> r = new HashSet<>(List.of("con", "prn", "aux", "nul"));
+        for (int i = 0; i <= 9; i++) {
+            r.add("com" + i);
+            r.add("lpt" + i);
+        }
+        return Set.copyOf(r);
     }
 
     /** Copia una máquina con otro nombre, que no debe existir. */
@@ -123,6 +161,7 @@ public class RepositorioMaquinas {
         if (existe(nuevoNombre) || Files.exists(archivo(nuevoNombre)))   // también un archivo ilegible o dañado con ese nombre
             throw new EventoInvalidoException("Ya existe una máquina llamada «" + nuevoNombre + "»");
         Maquina copia = base.conNombre(nuevoNombre);
+        exigirNombreUsable(copia);
         try {
             copia.escribir(archivo(nuevoNombre), true);               // CREATE_NEW: nunca pisa un archivo creado entre medio
         } catch (FileAlreadyExistsException ex) {
