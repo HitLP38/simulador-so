@@ -1,5 +1,6 @@
 package pe.uni.so.motor;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -96,7 +97,10 @@ public class Kernel {
     private final Set<Integer> expropiadosTick = new HashSet<>(), finQuantumTick = new HashSet<>();
     private GestorMemoria.Muestra ultimaMuestra;
     private List<Integer> esperanAdmision = List.of();     // ya intentaron entrar y siguen en Nuevo
-    private final List<FalloObservador> fallosObservadores = new ArrayList<>();
+    /** [P16] Fallos de vistas que se conservan (los más antiguos se descartan; el total se sigue contando). */
+    public static final int MAX_FALLOS_OBSERVADORES = 100;
+    private final ArrayDeque<FalloObservador> fallosObservadores = new ArrayDeque<>();
+    private long totalFallosObservadores;
 
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos, PlanificadorLargoPlazo largoPlazo) {
         this(politica, procesos, largoPlazo, 0, 1);
@@ -171,7 +175,9 @@ public class Kernel {
             try {
                 o.alCerrarTick(foto);
             } catch (RuntimeException e) {
-                fallosObservadores.add(new FalloObservador(foto.t(), o, e));
+                fallosObservadores.addLast(new FalloObservador(foto.t(), o, e));
+                if (fallosObservadores.size() > MAX_FALLOS_OBSERVADORES) fallosObservadores.removeFirst();
+                totalFallosObservadores++;
             }
         }
     }
@@ -518,6 +524,12 @@ public class Kernel {
 
     public void dejarDeObservar(ObservadorTick o) { observadores.remove(o); }
 
-    /** [P16] Fallos de las vistas al recibir fotos (la barra de estado los puede mostrar). */
+    /**
+     * [P16] Últimos fallos de las vistas al recibir fotos, del más antiguo al más reciente (como
+     * máximo {@link #MAX_FALLOS_OBSERVADORES}, para que una vista rota no llene la memoria).
+     */
     public List<FalloObservador> fallosObservadores() { return List.copyOf(fallosObservadores); }
+
+    /** [P16] Cuántas veces fallaron las vistas en toda la simulación, incluidos los fallos ya descartados. */
+    public long totalFallosObservadores() { return totalFallosObservadores; }
 }

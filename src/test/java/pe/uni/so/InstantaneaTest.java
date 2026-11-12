@@ -253,6 +253,13 @@ class InstantaneaTest {
         assertEquals(1, primero.t());
         assertTrue(primero.observador() == roto);
         assertEquals("vista rota en t=1", primero.error().getMessage());
+
+        Kernel largo = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, Kernel.MAX_FALLOS_OBSERVADORES + 50)));
+        largo.observar(roto);
+        largo.ejecutarTodo();
+        assertEquals(Kernel.MAX_FALLOS_OBSERVADORES, largo.fallosObservadores().size());   // acotado
+        assertEquals(largo.t(), largo.totalFallosObservadores());
+        assertEquals(largo.t(), largo.fallosObservadores().get(Kernel.MAX_FALLOS_OBSERVADORES - 1).t());
     }
 
     @Test @DisplayName("[P16][G5] La foto inicial ya muestra la velocidad configurada de cada dispositivo")
