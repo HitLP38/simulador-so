@@ -77,6 +77,16 @@ class CreadorProcesosTest {
         assertEquals(1000, carga.get(999).pid);
     }
 
+    @Test @DisplayName("[P14] Las llegadas son de Poisson con media 3: el intervalo medio entre llegadas se aproxima a 3")
+    void llegadasDePoisson() {
+        for (long semilla : new long[] {1, 7, 2026}) {
+            List<Pcb> carga = new CreadorProcesos(semilla, B).aleatorios(5000, 10);
+            assertEquals(10, carga.get(0).llegada);
+            double media = (double) (carga.get(4999).llegada - carga.get(0).llegada) / 4999;
+            assertTrue(Math.abs(media - CreadorProcesos.LLEGADA_MEDIA) < 0.2, "semilla " + semilla + ": media " + media);
+        }
+    }
+
     @Test @DisplayName("[P11][P12][E10][E11] Cada proceso pide E/S entre 5 y 10 veces (10 a 20 interrupciones), en instantes distintos dentro de la ráfaga, de 5 a 20 ticks cada una")
     void planDeES() {
         for (Pcb p : new CreadorProcesos(99, B).aleatorios(2000, 0)) {

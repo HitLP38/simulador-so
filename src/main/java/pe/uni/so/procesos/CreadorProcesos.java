@@ -73,14 +73,19 @@ public class CreadorProcesos {
         return crear(llegada, burst, texto, DATOS_MANUAL, HEAP_MANUAL, PRIORIDAD_MANUAL);
     }
 
-    /** [P14] «Generar N»: procesos con la ecuación 8, llegando como un proceso de Poisson desde {@code desde}. */
+    /**
+     * [P14] «Generar N»: procesos con la ecuación 8, llegando como un proceso de Poisson de media 3
+     * desde {@code desde}. Los intervalos se acumulan en tiempo continuo y solo la llegada absoluta
+     * se redondea hacia abajo, así redondear no alarga la media.
+     */
     public List<Pcb> aleatorios(int n, int desde) {
         if (n < 1) throw new ParametroInvalidoException("Hay que generar al menos 1 proceso (" + n + ")");
         if (desde < 0) throw new ParametroInvalidoException("La primera llegada debe ser ≥ 0 (" + desde + ")");
         List<Pcb> lote = new ArrayList<>(n);
-        int llegada = desde;
+        double tiempo = desde;                         // tiempo continuo: se acumula sin redondear
         for (int i = 0; i < n; i++) {
-            if (i > 0) llegada += (int) Math.ceil(-LLEGADA_MEDIA * Math.log(1 - rng.uniforme()));
+            if (i > 0) tiempo += -LLEGADA_MEDIA * Math.log(1 - rng.uniforme());   // intervalo exponencial de media 3
+            int llegada = (int) Math.floor(tiempo);   // solo la llegada absoluta se lleva a ticks: la media se mantiene en 3
             int burst = BURST_MINIMO + (int) Math.floor((BURST_MAXIMO_ALEATORIO - BURST_MINIMO + 1) * rng.uniforme());
             long texto = TEXTO_MINIMO + (long) Math.floor((TEXTO_MAXIMO - TEXTO_MINIMO + 1024) / 1024.0 * rng.uniforme()) * 1024;
             double datos = 0.20 + 0.20 * rng.uniforme();
