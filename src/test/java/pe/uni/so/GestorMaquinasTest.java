@@ -184,8 +184,10 @@ class GestorMaquinasTest {
         assertTrue(f.avisos().isEmpty());                             // sin semilla no hay máquina que evaluar
         f.semilla("12a");
         assertTrue(f.errores().get(1).contains("dígitos"));
-        f.semilla("9".repeat(19));
-        assertTrue(f.errores().get(1).contains("18"));
+        f.semilla("9223372036854775808");                             // Long.MAX_VALUE + 1
+        assertTrue(f.errores().get(1).contains("9223372036854775807"), f.errores().toString());
+        f.semilla("9".repeat(20));
+        assertEquals(2, f.errores().size());
         f.nombre("Modesta");
         f.semilla("0");
         assertTrue(f.valido());
@@ -213,5 +215,58 @@ class GestorMaquinasTest {
         assertTrue(p.ok(), p.mensaje());
         assertEquals(20, p.terminados());
         assertTrue(p.ticks() > 0 && !p.gantt().isEmpty());
+    }
+
+    @Test @DisplayName("[G5] Se aceptan semillas de 19 dígitos hasta Long.MAX_VALUE: una máquina guardada así se puede configurar")
+    void semillaHastaLongMax() throws IOException {
+        GestorMaquinas g = gestor();
+        Configuracion d = Configuracion.porDefecto();
+        Configuracion grande = new Configuracion(d.ram(), d.pagina(), d.cpu(), d.politica(), d.quantum(), d.costoDespacho(),
+                d.grado(), d.estrategia(), d.carga(), d.reemplazo(), d.dispositivos(), 1_000_000_000_000_000_000L);
+        g.crear(new Maquina("Semilla grande", grande));
+        FormularioMaquina f = FormularioMaquina.configurar(g, g.repositorio().buscar("Semilla grande").orElseThrow());
+        assertEquals("1000000000000000000", f.semilla());
+        assertTrue(f.valido(), f.errores().toString());              // «Aceptar» no queda bloqueado
+        f.ram(Ram.GIB_2);
+        g.actualizar("Semilla grande", f.construir());
+        f.semilla(Long.toString(Long.MAX_VALUE));
+        assertTrue(f.valido());
+        assertEquals(Long.MAX_VALUE, f.construir().configuracion().semilla());
+        assertEquals(19, FormularioMaquina.DIGITOS_SEMILLA);
+    }
+
+    @Test @DisplayName("[G5] Se rechazan los nombres que Windows reserva (CON, PRN, AUX, NUL, COM0–9, LPT0–9)")
+    void nombresReservadosPorWindows() throws IOException {
+        GestorMaquinas g = gestor();
+        Configuracion d = Configuracion.porDefecto();
+        for (String n : List.of("NUL", "con", " Aux ", "prn", "COM1", "lpt9", "com0", "nul."))
+            assertTrue(g.errorNombre(n, null).orElseThrow().contains("Windows"), n);
+        assertTrue(g.errorNombre("Nulo", null).isEmpty());
+        assertTrue(g.errorNombre("COM10", null).isEmpty());
+        assertThrows(EventoInvalidoException.class, () -> g.crear(new Maquina("NUL", d)));
+        assertThrows(EventoInvalidoException.class, () -> g.repositorio().guardar(new Maquina("aux", d)));
+        assertThrows(EventoInvalidoException.class, () -> g.repositorio().clonar(Maquina.NOMBRE_POR_DEFECTO, "LPT1"));
+        g.crear(new Maquina("Alfa", d));
+        assertTrue(g.errorNombre("con", "Alfa").isPresent());         // tampoco al renombrar
+        assertEquals(List.of(Maquina.NOMBRE_POR_DEFECTO, "Alfa"), nombres(g));
+    }
+
+    @Test @DisplayName("[G5] Crear y renombrar escriben en exclusiva: no pisan un archivo creado entre medio")
+    void creacionExclusiva() throws IOException {
+        GestorMaquinas g = gestor();
+        Configuracion d = Configuracion.porDefecto();
+        RepositorioMaquinas otraInstancia = new RepositorioMaquinas(g.repositorio().carpeta());
+        g.crear(new Maquina("Alfa", d));
+        Maquina ajena = new Maquina("Beta", new Configuracion(Ram.GIB_4, d.pagina(), d.cpu(), d.politica(), d.quantum(),
+                d.costoDespacho(), d.grado(), d.estrategia(), d.carga(), d.reemplazo(), d.dispositivos(), 7));
+        otraInstancia.crear(ajena);                                   // la otra instancia ganó la carrera
+        assertThrows(EventoInvalidoException.class, () -> g.repositorio().crear(new Maquina("beta", d)));
+        assertEquals(Ram.GIB_4, g.repositorio().buscar("Beta").orElseThrow().configuracion().ram());
+        assertThrows(EventoInvalidoException.class, () -> g.actualizar("Alfa", new Maquina("BETA", d)));
+        assertTrue(g.repositorio().existe("Alfa"));                   // el renombrado fallido no borra la original
+        assertEquals(7, g.repositorio().buscar("Beta").orElseThrow().configuracion().semilla());
+        g.actualizar("Alfa", new Maquina("Alfa", new Configuracion(Ram.GIB_2, d.pagina(), d.cpu(), d.politica(), d.quantum(),
+                d.costoDespacho(), d.grado(), d.estrategia(), d.carga(), d.reemplazo(), d.dispositivos(), d.semilla())));
+        assertEquals(Ram.GIB_2, g.repositorio().buscar("Alfa").orElseThrow().configuracion().ram());   // misma clave: reemplaza
     }
 }

@@ -29,8 +29,8 @@ import pe.uni.so.procesos.Pcb;
  */
 public class FormularioMaquina {
 
-    /** Largo máximo de la semilla escrita (cabe en un long sin desbordar). */
-    public static final int DIGITOS_SEMILLA = 18;
+    /** Largo máximo de la semilla escrita: los dígitos de Long.MAX_VALUE (el rango válido es 0..Long.MAX_VALUE). */
+    public static final int DIGITOS_SEMILLA = Long.toString(Long.MAX_VALUE).length();
 
     private final Function<String, Optional<String>> validadorNombre;
 
@@ -120,8 +120,12 @@ public class FormularioMaquina {
         String s = semilla == null ? "" : semilla.strip();
         if (s.isEmpty()) return Optional.of("Escribe la semilla (un entero ≥ 0)");
         if (!s.chars().allMatch(Character::isDigit)) return Optional.of("La semilla solo admite dígitos (" + s + ")");
-        if (s.length() > DIGITOS_SEMILLA) return Optional.of("La semilla admite hasta " + DIGITOS_SEMILLA + " dígitos");
-        return Optional.empty();
+        try {
+            Long.parseLong(s);                                       // solo dígitos: falla únicamente por pasar de Long.MAX_VALUE
+            return Optional.empty();
+        } catch (NumberFormatException ex) {
+            return Optional.of("La semilla va de 0 a " + Long.MAX_VALUE);
+        }
     }
 
     /** Arma la máquina; falla si el formulario tiene errores. */

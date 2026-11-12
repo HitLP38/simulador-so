@@ -178,6 +178,7 @@ final class FormularioMaquinaDialogo extends Dialog<Maquina> {
     private static void fila(GridPane g, int fila, String texto, Node control) {
         Label l = new Label(texto);
         l.getStyleClass().add("etiqueta-campo");
+        l.setLabelFor(control);                                       // el lector de pantalla anuncia la etiqueta (LABELED_BY)
         if (control instanceof javafx.scene.control.Control c) c.setMaxWidth(Double.MAX_VALUE);
         g.addRow(fila, l, control);
     }

@@ -1,5 +1,6 @@
 package pe.uni.so.ui;
 
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,6 +35,7 @@ import pe.uni.so.configuracion.FichaMaquina;
 import pe.uni.so.configuracion.FormularioMaquina;
 import pe.uni.so.configuracion.GestorMaquinas;
 import pe.uni.so.configuracion.Maquina;
+import pe.uni.so.excepciones.SimuladorException;
 
 /**
  * [G5] Gestor de máquinas, la primera ventana de la app (al estilo de VirtualBox): a la izquierda
@@ -207,8 +209,9 @@ final class GestorMaquinasVista {
             if (abierta != null) abierta.toFront();
             return;
         }
-        intentar(() -> {
-            Stage s = VentanaMaquina.crear(m);
+        try {
+            intentar(() -> {
+                Stage s = VentanaMaquina.crear(m);
             ventanas.put(m.nombre(), s);
             s.setOnHidden(e -> {
                 ventanas.remove(m.nombre());
@@ -216,11 +219,13 @@ final class GestorMaquinasVista {
                 actualizarBotones();
                 lista.refresh();
             });
-            s.show();
-            actualizarBotones();
-            lista.refresh();
-        });
-        if (!ventanas.containsKey(m.nombre())) gestor.cerrar(m.nombre());   // falló al abrir
+                s.show();
+                actualizarBotones();
+                lista.refresh();
+            });
+        } finally {
+            if (!ventanas.containsKey(m.nombre())) gestor.cerrar(m.nombre());   // falló al abrir
+        }
     }
 
     private void eliminarDanado() {
@@ -300,7 +305,7 @@ final class GestorMaquinasVista {
     private void intentar(Runnable accion) {
         try {
             accion.run();
-        } catch (RuntimeException ex) {                          // SimuladorException o fallo de disco
+        } catch (SimuladorException | UncheckedIOException ex) {  // regla de negocio o fallo de disco; los errores de programación se propagan
             Alert a = new Alert(Alert.AlertType.ERROR, "", ButtonType.OK);
             Label texto = new Label(ex.getMessage() == null ? ex.toString() : ex.getMessage());
             texto.setWrapText(true);

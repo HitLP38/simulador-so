@@ -65,6 +65,8 @@ public class GestorMaquinas {
                     : Optional.of("La máquina por defecto no se puede renombrar; clónala para tener otra");
         if (mismaClave(n, Maquina.NOMBRE_POR_DEFECTO))
             return Optional.of("«" + n + "» está reservado para la máquina por defecto");
+        if (RepositorioMaquinas.nombreReservadoPorWindows(n))
+            return Optional.of("«" + n + "» es un nombre reservado por Windows (CON, PRN, AUX, NUL, COM0–9, LPT0–9); usa otro");
         if (nombreActual != null && mismaClave(n, nombreActual)) return Optional.empty();   // mismo archivo
         if (repositorio.existe(n)) return Optional.of("Ya existe una máquina llamada «" + n + "»");
         if (hayArchivoDanado(n))
@@ -72,24 +74,29 @@ public class GestorMaquinas {
         return Optional.empty();
     }
 
-    /** Guarda una máquina nueva; el nombre no debe estar usado. */
+    /** Guarda una máquina nueva con escritura exclusiva; el nombre no debe estar usado. */
     public Maquina crear(Maquina m) {
         exigirNombre(m.nombre(), null);
-        repositorio.guardar(m);
+        repositorio.crear(m);
         return m;
     }
 
     /**
-     * Guarda los cambios de una máquina. Si cambió el nombre, primero escribe el archivo nuevo y
-     * luego borra el anterior: si la escritura falla, la máquina original sigue intacta.
+     * Guarda los cambios de una máquina. Con el mismo nombre reemplaza su archivo; con otro
+     * nombre crea el archivo nuevo de forma exclusiva (no pisa uno creado entre medio) y luego
+     * borra el anterior: si la escritura falla, la máquina original sigue intacta.
      */
     public Maquina actualizar(String nombreActual, Maquina nueva) {
         Maquina actual = repositorio.buscar(nombreActual)
                 .orElseThrow(() -> new EventoInvalidoException("No existe la máquina «" + nombreActual + "»"));
         exigirCerrada(actual.nombre(), "configurar");
         exigirNombre(nueva.nombre(), actual.nombre());
-        repositorio.guardar(nueva);
-        if (!mismaClave(actual.nombre(), nueva.nombre())) repositorio.eliminar(actual.nombre());
+        if (mismaClave(actual.nombre(), nueva.nombre())) {
+            repositorio.guardar(nueva);
+        } else {
+            repositorio.crear(nueva);
+            repositorio.eliminar(actual.nombre());
+        }
         return nueva;
     }
 
