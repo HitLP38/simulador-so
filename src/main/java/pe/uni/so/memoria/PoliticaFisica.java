@@ -113,6 +113,8 @@ public class PoliticaFisica {
 
     public Reemplazo reemplazo() { return reemplazo; }
     public int cuota() { return paginas.length; }
+    /** [P16] Marcos de la cuota que ya tienen una página. */
+    public int ocupados() { return ocupados; }
     public int fallos() { return fallos; }
     public int reemplazos() { return reemplazos; }
 }

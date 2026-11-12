@@ -271,8 +271,6 @@ public record Configuracion(Ram ram, Pagina pagina, Cpu cpu,
         List<String> errores = problemas(procesos);
         if (!errores.isEmpty()) throw new ParametroInvalidoException("No se puede iniciar la máquina: " + String.join("; ", errores));
         PlanificadorLargoPlazo largoPlazo = new PlanificadorLargoPlazo(crearGestorMemoria(), grado);
-        Kernel k = new Kernel(crearPolitica(), procesos, largoPlazo, costoDespacho, cpu.instruccionesPorTick);
-        dispositivos.forEach(k.gestorES()::fijarVelocidad);
-        return k;
+        return new Kernel(crearPolitica(), procesos, largoPlazo, costoDespacho, cpu.instruccionesPorTick, dispositivos);
     }
 }

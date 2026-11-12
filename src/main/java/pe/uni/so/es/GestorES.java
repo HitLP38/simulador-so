@@ -119,6 +119,13 @@ public class GestorES {
 
     public SolicitudES solicitud(Pcb p) { return solicitudes.get(p); }
 
+    /** [P16] Proceso cuyo pedido atiende ahora el dispositivo (el primero de su cola), o null. */
+    public Pcb atendiendo(Dispositivo d) {
+        Servicio s = enServicio.get(d);
+        List<Pcb> cola = colas.cola(d);
+        return s != null && !cola.isEmpty() && s.proceso == cola.get(0) ? s.proceso : null;
+    }
+
     /** Ticks que le faltan al pedido en servicio del dispositivo, o -1 si no atiende ninguno. */
     public int restante(Dispositivo d) {
         Servicio s = enServicio.get(d);

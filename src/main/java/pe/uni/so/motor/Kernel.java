@@ -1,15 +1,21 @@
 package pe.uni.so.motor;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import pe.uni.so.es.AccionTeclado;
 import pe.uni.so.es.Dispositivo;
 import pe.uni.so.es.GestorES;
 import pe.uni.so.es.SolicitudES;
+import pe.uni.so.es.VelocidadDispositivo;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.interrupciones.ControladorInterrupciones;
@@ -46,8 +52,15 @@ import pe.uni.so.procesos.PedidoES;
  * <p>[P7] El quantum se toma al despachar: cambiarlo en plena simulación rige desde el
  * siguiente despacho. [P8] La CPU entra en modo KERNEL con cada tick, llamada al sistema o IRQ,
  * y vuelve a USUARIO cuando el despachador entrega la CPU a un proceso.
+ *
+ * <p>[P16] Al cerrar cada tick toma una {@link Instantanea} (foto inmutable de CPU, colas, PCB,
+ * PIC, dispositivos y memoria), la guarda en el historial y avisa a los {@link ObservadorTick}
+ * suscritos (patrón Observer). Las vistas solo leen esas fotos.
  */
 public class Kernel {
+
+    /** [P16] Una vista falló al recibir la foto del instante t; la simulación siguió. */
+    public record FalloObservador(int t, ObservadorTick observador, RuntimeException error) {}
 
     /** Un evento de la bitácora: en qué instante, qué momento y a qué proceso le ocurrió. */
     public record Evento(int t, Momento momento, Pcb proceso, String detalle) {
@@ -69,9 +82,25 @@ public class Kernel {
     private int t, usado, desalojos;
     private int quantumDespacho;                           // [P7] el quantum vigente se fija al despachar
     private Modo modo = Modo.KERNEL;                        // [P8] bit de modo de la CPU
-    private boolean revisarExpropiacion;
+    private boolean revisarExpropiacion;                   // hubo un momento c o d en este instante
     private Pcb pedidoAlTerminarTick;                      // [E2] proceso que llegó al instante de su pedido de E/S
-    private static final int BYTES_POR_PEDIDO = 512;       // un sector por pedido planificado                   // hubo un momento c o d en este instante
+    private static final int BYTES_POR_PEDIDO = 512;       // un sector por pedido planificado
+
+    /** [P16] Fotos que se conservan para retroceder en la línea de tiempo (las más antiguas se descartan). */
+    public static final int CAPACIDAD_HISTORIAL = 2_000;
+    private final List<Instantanea> historial = new ArrayList<>();
+    private final List<ObservadorTick> observadores = new ArrayList<>();
+    private int capacidadHistorial = CAPACIDAD_HISTORIAL;
+    private Instantanea ultima;
+    private int inicioTick;                                // primer evento de la bitácora que aún no sale en una foto
+    private Pcb ejecuto;                                   // quien usó la CPU en el tick (celda del Gantt)
+    private final Set<Integer> expropiadosTick = new HashSet<>(), finQuantumTick = new HashSet<>();
+    private GestorMemoria.Muestra ultimaMuestra;
+    private List<Integer> esperanAdmision = List.of();     // ya intentaron entrar y siguen en Nuevo
+    /** [P16] Fallos de vistas que se conservan (los más antiguos se descartan; el total se sigue contando). */
+    public static final int MAX_FALLOS_OBSERVADORES = 100;
+    private final ArrayDeque<FalloObservador> fallosObservadores = new ArrayDeque<>();
+    private long totalFallosObservadores;
 
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos, PlanificadorLargoPlazo largoPlazo) {
         this(politica, procesos, largoPlazo, 0, 1);
@@ -83,6 +112,16 @@ public class Kernel {
      */
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos, PlanificadorLargoPlazo largoPlazo,
                   double costoDespacho, double instruccionesPorTick) {
+        this(politica, procesos, largoPlazo, costoDespacho, instruccionesPorTick, Map.of());
+    }
+
+    /**
+     * [G5] Igual que el anterior, con la velocidad de cada dispositivo. Se aplica antes de la foto
+     * inicial, para que t = 0 ya muestre la máquina tal como se configuró.
+     */
+    public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos, PlanificadorLargoPlazo largoPlazo,
+                  double costoDespacho, double instruccionesPorTick, Map<Dispositivo, VelocidadDispositivo> velocidades) {
+        if (velocidades == null) throw new ParametroInvalidoException("Faltan las velocidades de los dispositivos");
         if (!(instruccionesPorTick > 0) || Double.isInfinite(instruccionesPorTick))
             throw new ParametroInvalidoException("La velocidad de la CPU debe ser > 0 instrucciones por tick");
         this.despachador = new Despachador(costoDespacho);
@@ -97,12 +136,18 @@ public class Kernel {
             for (Pcb p : procesos) if (p.espacio() != null) espacios.put(p.pid, p.espacio());
             if (!espacios.isEmpty()) largoPlazo.gestor().repartirCuotas(espacios);
         }
+        velocidades.forEach(gestorES::fijarVelocidad);
+        if (gestorMemoriaOpcional() != null) ultimaMuestra = gestorMemoriaOpcional().muestra(0);
+        guardar(capturar());                               // [P16] foto inicial: t = 0, todos en Nuevo
     }
 
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos) { this(politica, procesos, null); }
 
     /** Un tick: eventos del instante t, una decisión de planificación y una instrucción. */
     public void paso() {
+        ejecuto = null;
+        expropiadosTick.clear();
+        finQuantumTick.clear();
         modo = Modo.KERNEL;                                // la interrupción del reloj entra al kernel
         momentoD();
         atenderInterrupciones();                           // [E6] fin de E/S por IRQ (momento c)
@@ -110,10 +155,31 @@ public class Kernel {
         if (colas.enCpu() != null) modo = Modo.USUARIO;    // paso 4 del despachador: vuelve a modo usuario
         ejecutar();
         gestorES.avanzar();                                // [E5] cada dispositivo trabaja un tick
-        if (largoPlazo != null && largoPlazo.gestor() != null)
-            historialMemoria.add(largoPlazo.gestor().muestra(t));   // [I6] memoria controlada en cada tick
+        if (gestorMemoriaOpcional() != null) {
+            ultimaMuestra = gestorMemoriaOpcional().muestra(t);
+            historialMemoria.add(ultimaMuestra);           // [I6] memoria controlada en cada tick
+        }
         t++;
         emitirPedidoDebido();
+        Instantanea foto = capturar();                     // [P16] foto al cerrar el tick
+        guardar(foto);
+        avisar(foto);
+    }
+
+    /**
+     * [P16] Entrega la foto a cada observador. El tick ya quedó cerrado, así que el fallo de una
+     * vista no lo deshace ni deja sin foto a las demás: se registra en {@link #fallosObservadores()}.
+     */
+    private void avisar(Instantanea foto) {
+        for (ObservadorTick o : List.copyOf(observadores)) {
+            try {
+                o.alCerrarTick(foto);
+            } catch (RuntimeException e) {
+                fallosObservadores.addLast(new FalloObservador(foto.t(), o, e));
+                if (fallosObservadores.size() > MAX_FALLOS_OBSERVADORES) fallosObservadores.removeFirst();
+                totalFallosObservadores++;
+            }
+        }
     }
 
     /**
@@ -247,6 +313,7 @@ public class Kernel {
             registrar(t, Momento.D, p, "admitido, pasa a Listo");
             revisarExpropiacion = true;
         }
+        esperanAdmision = porLlegar.stream().filter(p -> p.llegada <= t).map(p -> p.pid).toList();   // [P16] intentaron y no entraron
     }
 
     /** (e) El proceso en ejecución terminó al final del tick: libera la CPU y su memoria. */
@@ -279,12 +346,13 @@ public class Kernel {
 
         if (actual != null && usado >= quantumDespacho) {              // (b) timer
             if (candidatos.isEmpty()) usado = 0;                        // solo: sigue con el mismo quantum
-            else { cambiar = true; momentoB(actual, "agotó su quantum de " + quantumDespacho); }
+            else { cambiar = true; finQuantumTick.add(actual.pid); momentoB(actual, "agotó su quantum de " + quantumDespacho); }
         } else if (actual != null && revisarExpropiacion && !candidatos.isEmpty()) {   // (c)(d)
             Pcb candidato = politica.elegir(candidatos);
             if (politica.expropia(candidato, actual)) {
                 cambiar = true;
                 desalojos++;
+                expropiadosTick.add(actual.pid);
                 momentoB(actual, "expropiado por " + candidato + " (" + politica.nombre() + ")");
             }
         }
@@ -306,6 +374,7 @@ public class Kernel {
         procesos.stream().filter(p -> p.estado() == Estado.BLOQUEADO).forEach(Pcb::sumarBloqueado);
         Pcb actual = colas.enCpu();
         gantt.append(actual == null ? "-" : actual.pid).append(' ');
+        ejecuto = actual;
         if (actual == null) return;
         actual.ejecutarTick(instruccionesPorTick);         // [G5] lo que alcanza a ejecutar la CPU en este tick
         usado++;
@@ -328,6 +397,74 @@ public class Kernel {
         int bufer = (int) Math.min(datos, Integer.MAX_VALUE - BYTES_POR_PEDIDO);
         llamadaSistema(new SolicitudES(p.pid, pedido.dispositivo(), pedido.operacion(), bufer, BYTES_POR_PEDIDO, pedido.duracion()));
     }
+
+    // ---------------------------------------------------------------- instantánea (P16)
+
+    /** Arma la foto del instante t con los eventos registrados desde la foto anterior. */
+    private Instantanea capturar() {
+        List<Instantanea.Suceso> sucesos = new ArrayList<>();
+        Map<Integer, Evento> ultimoEvento = new HashMap<>();
+        for (Evento e : bitacora.subList(inicioTick, bitacora.size())) {
+            sucesos.add(new Instantanea.Suceso(e.t(), e.momento(), e.proceso().pid, e.detalle()));
+            ultimoEvento.put(e.proceso().pid, e);
+        }
+        inicioTick = bitacora.size();
+
+        GestorMemoria gm = gestorMemoriaOpcional();
+        List<Integer> nuevos = esperanAdmision;
+        Set<Integer> esperan = new HashSet<>(nuevos);
+        List<Instantanea.Proceso> fichas = new ArrayList<>();
+        for (int i = 0; i < procesos.size(); i++) {
+            Pcb p = procesos.get(i);
+            Estado anterior = ultima == null ? p.estado() : ultima.procesos().get(i).estado();
+            Evento e = ultimoEvento.get(p.pid);
+            Momento momento = e == null ? null : e.momento();
+            String motivo = e == null ? "" : e.detalle();
+            if (p.estado() == Estado.EJECUTANDO && anterior != Estado.EJECUTANDO)
+                motivo = (motivo.isEmpty() ? "" : motivo + "; ") + "el despachador le entrega la CPU (" + politica.nombre() + ")";
+            Set<Instantanea.Insignia> insignias = EnumSet.noneOf(Instantanea.Insignia.class);
+            if (expropiadosTick.contains(p.pid)) insignias.add(Instantanea.Insignia.EXPROPIADO);
+            if (finQuantumTick.contains(p.pid)) insignias.add(Instantanea.Insignia.FIN_QUANTUM);
+            if (p.suspendido()) insignias.add(Instantanea.Insignia.SUSPENDIDO);
+            if (esperan.contains(p.pid)) insignias.add(Instantanea.Insignia.ESPERA_MEMORIA);
+            if (p.cancelacionPendiente()) insignias.add(Instantanea.Insignia.CANCELACION_PENDIENTE);
+            if (p.error() != null) insignias.add(Instantanea.Insignia.ERROR);
+            int marcos = gm == null ? 0 : gm.marcosOcupados(p.pid);
+            int cuota = gm != null && gm.tieneCuota(p.pid) ? gm.cuota(p.pid) : 0;
+            fichas.add(new Instantanea.Proceso(p.pid, p.llegada, p.burst, p.restante(), p.prioridad, p.estado(), anterior,
+                    ColorEstado.de(p.estado()), insignias, momento, motivo, p.pc(), p.quantumRestante(), p.dispositivo(),
+                    p.espera(), p.cpu(), p.bloqueado(), p.pedidosES(), marcos, cuota, p.error()));
+        }
+
+        Pcb enCpu = colas.enCpu();
+        int quantum = enCpu == null || quantumDespacho == Integer.MAX_VALUE ? 0 : quantumDespacho;
+        Instantanea.Cpu cpu = new Instantanea.Cpu(modo, pid(enCpu), pid(ejecuto), politica.nombre(), quantum,
+                enCpu == null ? 0 : usado, instruccionesPorTick, despachador.despachos(), desalojos, despachador.tiempoDespacho());
+
+        List<Instantanea.FichaDispositivo> dispositivos = new ArrayList<>();
+        for (Dispositivo d : Dispositivo.values()) {
+            Pcb atendido = gestorES.atendiendo(d);
+            SolicitudES s = atendido == null ? null : gestorES.solicitud(atendido);
+            dispositivos.add(new Instantanea.FichaDispositivo(d, gestorES.velocidad(d), colas.cola(d).stream().map(p -> p.pid).toList(),
+                    pid(atendido), atendido == null ? -1 : gestorES.restante(d), s == null ? null : s.operacion()));
+        }
+
+        Instantanea.Pic foto = new Instantanea.Pic(pic.pendientes(), pic.enmascaradas(), pic.pilaEnServicio(), pic.atendidas());
+        Instantanea.Memoria memoria = gm == null ? null : new Instantanea.Memoria(gm.mapa().total(), ultimaMuestra,
+                gm.estrategia().nombre(), gm.reemplazo(), gm.fallosPagina());
+        return new Instantanea(t, cpu, nuevos, colas.listos().stream().map(p -> p.pid).toList(), fichas, dispositivos,
+                foto, memoria, sucesos);
+    }
+
+    private void guardar(Instantanea foto) {
+        ultima = foto;
+        historial.add(foto);
+        if (historial.size() > capacidadHistorial) historial.remove(0);
+    }
+
+    private static int pid(Pcb p) { return p == null ? Instantanea.NINGUNO : p.pid; }
+
+    private GestorMemoria gestorMemoriaOpcional() { return largoPlazo == null ? null : largoPlazo.gestor(); }
 
     private List<Pcb> listosResidentes() { return colas.listos().stream().filter(p -> !p.suspendido()).toList(); }
 
@@ -353,4 +490,46 @@ public class Kernel {
     public ControladorInterrupciones pic() { return pic; }
     public GestorES gestorES() { return gestorES; }
     public Despachador despachador() { return despachador; }
+
+    /** [P16] Foto del último tick cerrado (la inicial si aún no se dio ningún paso). */
+    public Instantanea instantanea() { return ultima; }
+
+    /** [P16] Foto del instante indicado, si todavía está en el historial. */
+    public Optional<Instantanea> instantanea(int instante) {
+        if (historial.isEmpty()) return Optional.empty();
+        int i = instante - historial.get(0).t();          // hay una foto por instante, sin saltos
+        return i < 0 || i >= historial.size() ? Optional.empty() : Optional.of(historial.get(i));
+    }
+
+    /** [P16] Fotos conservadas, de la más antigua a la más reciente. */
+    public List<Instantanea> historial() { return List.copyOf(historial); }
+
+    /**
+     * [P16] Cuántas fotos conservar. Un tick más antiguo se puede volver a ver re-simulando con la
+     * misma configuración y semilla, porque la simulación es determinista, siempre que también se
+     * repitan, en los mismos ticks, las acciones manuales ({@link #pedirES}, {@link #llamadaSistema},
+     * {@link #teclado}, {@link #malloc}, {@link #apilar}, {@link #acceder}): esas no salen de la semilla.
+     */
+    public void limitarHistorial(int capacidad) {
+        if (capacidad < 1) throw new ParametroInvalidoException("El historial debe conservar al menos 1 foto");
+        capacidadHistorial = capacidad;
+        while (historial.size() > capacidadHistorial) historial.remove(0);
+    }
+
+    /** [P16] Suscribe una vista: recibirá una foto al cerrar cada tick. */
+    public void observar(ObservadorTick o) {
+        if (o == null) throw new ParametroInvalidoException("Falta el observador");
+        observadores.add(o);
+    }
+
+    public void dejarDeObservar(ObservadorTick o) { observadores.remove(o); }
+
+    /**
+     * [P16] Últimos fallos de las vistas al recibir fotos, del más antiguo al más reciente (como
+     * máximo {@link #MAX_FALLOS_OBSERVADORES}, para que una vista rota no llene la memoria).
+     */
+    public List<FalloObservador> fallosObservadores() { return List.copyOf(fallosObservadores); }
+
+    /** [P16] Cuántas veces fallaron las vistas en toda la simulación, incluidos los fallos ya descartados. */
+    public long totalFallosObservadores() { return totalFallosObservadores; }
 }
