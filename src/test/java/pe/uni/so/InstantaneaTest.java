@@ -140,11 +140,15 @@ class InstantaneaTest {
         assertEquals(1, srtf.instantanea().cpu().desalojos());
     }
 
-    @Test @DisplayName("[P16] El que llegó y no cabe en memoria sigue en Nuevo con la insignia de espera")
+    @Test @DisplayName("[P16] Solo quien intentó entrar y no cupo lleva la insignia de espera; quien recién llega aún no")
     void esperaMemoria() {
-        Kernel k = pasos(new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 2, 0, 8), new Pcb(2, 0, 2, 0, 8)),
-                new PlanificadorLargoPlazo(10)), 1);
+        Kernel k = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 2, 0, 8), new Pcb(2, 0, 2, 0, 8), new Pcb(3, 1, 1, 0, 1)),
+                new PlanificadorLargoPlazo(10));
+        assertTrue(k.instantanea().nuevos().isEmpty());            // t = 0: nadie intentó entrar todavía
+        assertFalse(k.instantanea().proceso(1).orElseThrow().tiene(Insignia.ESPERA_MEMORIA));
+        k.paso();
         Instantanea f = k.instantanea();
+        assertFalse(f.proceso(3).orElseThrow().tiene(Insignia.ESPERA_MEMORIA));   // llega en t = 1: se intenta en el próximo tick
 
         assertEquals(List.of(2), f.nuevos());
         assertTrue(f.proceso(2).orElseThrow().tiene(Insignia.ESPERA_MEMORIA));
@@ -234,8 +238,40 @@ class InstantaneaTest {
         assertThrows(ParametroInvalidoException.class, () -> k.limitarHistorial(0));
     }
 
+    @Test @DisplayName("[P16] Una vista que falla no detiene la simulación ni deja sin foto a las demás")
+    void observadorQueFalla() {
+        Kernel k = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 3), new Pcb(2, 0, 2)));
+        List<Instantanea> recibidas = new ArrayList<>();
+        ObservadorTick roto = f -> { throw new IllegalStateException("vista rota en t=" + f.t()); };
+        k.observar(roto);
+        k.observar(recibidas::add);
+        k.ejecutarTodo();
+
+        assertEquals(k.t(), recibidas.size());
+        assertEquals(k.t(), k.fallosObservadores().size());
+        Kernel.FalloObservador primero = k.fallosObservadores().get(0);
+        assertEquals(1, primero.t());
+        assertTrue(primero.observador() == roto);
+        assertEquals("vista rota en t=1", primero.error().getMessage());
+    }
+
+    @Test @DisplayName("[P16][G5] La foto inicial ya muestra la velocidad configurada de cada dispositivo")
+    void velocidadesEnFotoInicial() {
+        Configuracion base = Configuracion.porDefecto();
+        Map<Dispositivo, VelocidadDispositivo> velocidades = new java.util.EnumMap<>(base.dispositivos());
+        velocidades.put(Dispositivo.DISCO, VelocidadDispositivo.LENTO);
+        Configuracion c = new Configuracion(base.ram(), base.pagina(), base.cpu(), base.politica(), base.quantum(),
+                base.costoDespacho(), base.grado(), base.estrategia(), base.carga(), base.reemplazo(), velocidades, base.semilla());
+        Instantanea f = c.crearKernel(CreadorProcesos.loteOficial(B)).instantanea();
+
+        assertEquals(0, f.t());
+        assertEquals(VelocidadDispositivo.LENTO, f.dispositivo(Dispositivo.DISCO).velocidad());
+        assertEquals(VelocidadDispositivo.NORMAL, f.dispositivo(Dispositivo.RED).velocidad());
+    }
+
     @Test @DisplayName("[P16] Cada estado tiene su color y son distintos entre sí")
     void colores() {
+        assertThrows(ParametroInvalidoException.class, () -> ColorEstado.de(null));
         Set<String> colores = new HashSet<>();
         for (Estado e : Estado.values()) assertTrue(colores.add(ColorEstado.de(e)), e + " repite color");
         assertTrue(colores.stream().allMatch(c -> c.matches("#[0-9A-F]{6}")));

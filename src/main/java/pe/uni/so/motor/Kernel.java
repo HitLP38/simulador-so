@@ -14,6 +14,7 @@ import pe.uni.so.es.AccionTeclado;
 import pe.uni.so.es.Dispositivo;
 import pe.uni.so.es.GestorES;
 import pe.uni.so.es.SolicitudES;
+import pe.uni.so.es.VelocidadDispositivo;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.interrupciones.ControladorInterrupciones;
@@ -57,6 +58,9 @@ import pe.uni.so.procesos.PedidoES;
  */
 public class Kernel {
 
+    /** [P16] Una vista falló al recibir la foto del instante t; la simulación siguió. */
+    public record FalloObservador(int t, ObservadorTick observador, RuntimeException error) {}
+
     /** Un evento de la bitácora: en qué instante, qué momento y a qué proceso le ocurrió. */
     public record Evento(int t, Momento momento, Pcb proceso, String detalle) {
         @Override public String toString() { return "t=" + t + " (" + momento + ") " + proceso + ": " + detalle; }
@@ -91,6 +95,8 @@ public class Kernel {
     private Pcb ejecuto;                                   // quien usó la CPU en el tick (celda del Gantt)
     private final Set<Integer> expropiadosTick = new HashSet<>(), finQuantumTick = new HashSet<>();
     private GestorMemoria.Muestra ultimaMuestra;
+    private List<Integer> esperanAdmision = List.of();     // ya intentaron entrar y siguen en Nuevo
+    private final List<FalloObservador> fallosObservadores = new ArrayList<>();
 
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos, PlanificadorLargoPlazo largoPlazo) {
         this(politica, procesos, largoPlazo, 0, 1);
@@ -102,6 +108,16 @@ public class Kernel {
      */
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos, PlanificadorLargoPlazo largoPlazo,
                   double costoDespacho, double instruccionesPorTick) {
+        this(politica, procesos, largoPlazo, costoDespacho, instruccionesPorTick, Map.of());
+    }
+
+    /**
+     * [G5] Igual que el anterior, con la velocidad de cada dispositivo. Se aplica antes de la foto
+     * inicial, para que t = 0 ya muestre la máquina tal como se configuró.
+     */
+    public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos, PlanificadorLargoPlazo largoPlazo,
+                  double costoDespacho, double instruccionesPorTick, Map<Dispositivo, VelocidadDispositivo> velocidades) {
+        if (velocidades == null) throw new ParametroInvalidoException("Faltan las velocidades de los dispositivos");
         if (!(instruccionesPorTick > 0) || Double.isInfinite(instruccionesPorTick))
             throw new ParametroInvalidoException("La velocidad de la CPU debe ser > 0 instrucciones por tick");
         this.despachador = new Despachador(costoDespacho);
@@ -116,6 +132,7 @@ public class Kernel {
             for (Pcb p : procesos) if (p.espacio() != null) espacios.put(p.pid, p.espacio());
             if (!espacios.isEmpty()) largoPlazo.gestor().repartirCuotas(espacios);
         }
+        velocidades.forEach(gestorES::fijarVelocidad);
         if (gestorMemoriaOpcional() != null) ultimaMuestra = gestorMemoriaOpcional().muestra(0);
         guardar(capturar());                               // [P16] foto inicial: t = 0, todos en Nuevo
     }
@@ -142,7 +159,21 @@ public class Kernel {
         emitirPedidoDebido();
         Instantanea foto = capturar();                     // [P16] foto al cerrar el tick
         guardar(foto);
-        for (ObservadorTick o : List.copyOf(observadores)) o.alCerrarTick(foto);
+        avisar(foto);
+    }
+
+    /**
+     * [P16] Entrega la foto a cada observador. El tick ya quedó cerrado, así que el fallo de una
+     * vista no lo deshace ni deja sin foto a las demás: se registra en {@link #fallosObservadores()}.
+     */
+    private void avisar(Instantanea foto) {
+        for (ObservadorTick o : List.copyOf(observadores)) {
+            try {
+                o.alCerrarTick(foto);
+            } catch (RuntimeException e) {
+                fallosObservadores.add(new FalloObservador(foto.t(), o, e));
+            }
+        }
     }
 
     /**
@@ -276,6 +307,7 @@ public class Kernel {
             registrar(t, Momento.D, p, "admitido, pasa a Listo");
             revisarExpropiacion = true;
         }
+        esperanAdmision = porLlegar.stream().filter(p -> p.llegada <= t).map(p -> p.pid).toList();   // [P16] intentaron y no entraron
     }
 
     /** (e) El proceso en ejecución terminó al final del tick: libera la CPU y su memoria. */
@@ -373,7 +405,7 @@ public class Kernel {
         inicioTick = bitacora.size();
 
         GestorMemoria gm = gestorMemoriaOpcional();
-        List<Integer> nuevos = porLlegar.stream().filter(p -> p.llegada <= t).map(p -> p.pid).toList();
+        List<Integer> nuevos = esperanAdmision;
         Set<Integer> esperan = new HashSet<>(nuevos);
         List<Instantanea.Proceso> fichas = new ArrayList<>();
         for (int i = 0; i < procesos.size(); i++) {
@@ -468,7 +500,9 @@ public class Kernel {
 
     /**
      * [P16] Cuántas fotos conservar. Un tick más antiguo se puede volver a ver re-simulando con la
-     * misma configuración y semilla, porque la simulación es determinista.
+     * misma configuración y semilla, porque la simulación es determinista, siempre que también se
+     * repitan, en los mismos ticks, las acciones manuales ({@link #pedirES}, {@link #llamadaSistema},
+     * {@link #teclado}, {@link #malloc}, {@link #apilar}, {@link #acceder}): esas no salen de la semilla.
      */
     public void limitarHistorial(int capacidad) {
         if (capacidad < 1) throw new ParametroInvalidoException("El historial debe conservar al menos 1 foto");
@@ -483,4 +517,7 @@ public class Kernel {
     }
 
     public void dejarDeObservar(ObservadorTick o) { observadores.remove(o); }
+
+    /** [P16] Fallos de las vistas al recibir fotos (la barra de estado los puede mostrar). */
+    public List<FalloObservador> fallosObservadores() { return List.copyOf(fallosObservadores); }
 }

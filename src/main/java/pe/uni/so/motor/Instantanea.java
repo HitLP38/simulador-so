@@ -24,7 +24,7 @@ import pe.uni.so.procesos.Estado;
  *
  * @param t           instante de la foto
  * @param cpu         estado del procesador
- * @param nuevos      PID de los que ya llegaron y esperan admisión (no caben en memoria), en orden
+ * @param nuevos      PID de los que ya intentaron entrar y siguen en Nuevo (sin memoria o grado máximo), en orden
  * @param listos      PID de la cola de listos, en orden
  * @param procesos    una ficha por proceso, en el orden de ingreso
  * @param dispositivos una ficha por dispositivo, en el orden del enum
@@ -57,7 +57,7 @@ public record Instantanea(int t, Cpu cpu, List<Integer> nuevos, List<Integer> li
         FIN_QUANTUM,
         /** Su memoria está en el área de intercambio (planificador de mediano plazo). */
         SUSPENDIDO,
-        /** Ya llegó, pero sigue en Nuevo porque no cabe en memoria o se alcanzó el grado máximo. */
+        /** Intentó entrar en el momento d y sigue en Nuevo: no cabe en memoria o se alcanzó el grado máximo. */
         ESPERA_MEMORIA,
         /** Tiene la señal CANCELAR del teclado pendiente de entrega. */
         CANCELACION_PENDIENTE,

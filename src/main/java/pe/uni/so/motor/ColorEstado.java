@@ -1,5 +1,6 @@
 package pe.uni.so.motor;
 
+import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.procesos.Estado;
 
 /**
@@ -17,7 +18,7 @@ public final class ColorEstado {
 
     /** Color en hexadecimal (#RRGGBB) del estado. */
     public static String de(Estado e) {
-        if (e == null) throw new IllegalArgumentException("Falta el estado");
+        if (e == null) throw new ParametroInvalidoException("Falta el estado para elegir su color");
         return switch (e) {
             case NUEVO -> NUEVO;
             case LISTO -> LISTO;
