@@ -24,6 +24,7 @@ import pe.uni.so.procesos.CodigoError;
 import pe.uni.so.procesos.Colas;
 import pe.uni.so.procesos.Estado;
 import pe.uni.so.procesos.Pcb;
+import pe.uni.so.procesos.PedidoES;
 
 /**
  * [P6] Núcleo del simulador: avanza un tick a la vez y decide CUÁNDO se llama al planificador.
@@ -68,7 +69,9 @@ public class Kernel {
     private int t, usado, desalojos;
     private int quantumDespacho;                           // [P7] el quantum vigente se fija al despachar
     private Modo modo = Modo.KERNEL;                        // [P8] bit de modo de la CPU
-    private boolean revisarExpropiacion;                   // hubo un momento c o d en este instante
+    private boolean revisarExpropiacion;
+    private Pcb pedidoAlTerminarTick;                      // [E2] proceso que llegó al instante de su pedido de E/S
+    private static final int BYTES_POR_PEDIDO = 512;       // un sector por pedido planificado                   // hubo un momento c o d en este instante
 
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos, PlanificadorLargoPlazo largoPlazo) {
         this(politica, procesos, largoPlazo, 0, 1);
@@ -110,6 +113,7 @@ public class Kernel {
         if (largoPlazo != null && largoPlazo.gestor() != null)
             historialMemoria.add(largoPlazo.gestor().muestra(t));   // [I6] memoria controlada en cada tick
         t++;
+        emitirPedidoDebido();
     }
 
     /**
@@ -307,6 +311,22 @@ public class Kernel {
         usado++;
         actual.fijarQuantumRestante(quantumDespacho == Integer.MAX_VALUE ? 0 : quantumDespacho - usado);
         if (actual.restante() == 0) momentoE(actual);
+        else if (actual.pedidoDebido().isPresent()) pedidoAlTerminarTick = actual;   // [E2] su E/S se pide al cerrar el tick
+    }
+
+    /**
+     * [E2] El proceso llegó al instante de un pedido de E/S planificado: al cerrar el tick hace la
+     * llamada al sistema 0x80 (momento a), igual que si la pidiera el usuario entre dos ticks.
+     */
+    private void emitirPedidoDebido() {
+        Pcb p = pedidoAlTerminarTick;
+        pedidoAlTerminarTick = null;
+        if (p == null || colas.enCpu() != p) return;
+        PedidoES pedido = p.pedidoDebido().orElseThrow();
+        p.marcarPedidoEmitido();
+        long datos = p.espacio() == null ? 0 : p.espacio().base(EspacioProceso.Segmento.DATOS);   // búfer en su segmento de datos
+        int bufer = (int) Math.min(datos, Integer.MAX_VALUE - BYTES_POR_PEDIDO);
+        llamadaSistema(new SolicitudES(p.pid, pedido.dispositivo(), pedido.operacion(), bufer, BYTES_POR_PEDIDO, pedido.duracion()));
     }
 
     private List<Pcb> listosResidentes() { return colas.listos().stream().filter(p -> !p.suspendido()).toList(); }

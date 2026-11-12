@@ -1,5 +1,7 @@
 package pe.uni.so.procesos;
 
+import java.util.List;
+import java.util.Optional;
 import pe.uni.so.es.Dispositivo;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
@@ -30,6 +32,8 @@ public class Pcb {
     private int inicio = -1, fin = -1, espera = 0, cpu = 0, bloqueado = 0;
     private int pedidosES, interrupciones;   // [E3] pedidos de E/S pendientes y llamadas/IRQ propias
     private CodigoError error;              // [P9] null si terminó normalmente
+    private List<PedidoES> planES = List.of();   // [E2] pedidos de E/S planificados, en orden
+    private int siguientePedido;
     private double avance;                  // [G5] fracción de instrucción hecha por una CPU lenta (contexto)
     private EspacioProceso espacio;         // [I1] segmentos del proceso; null en las pruebas sin memoria real
     private boolean cancelacionPendiente;   // [E9] señal CANCELAR aún no entregada
@@ -63,14 +67,15 @@ public class Pcb {
      * [G5] Un tick con la CPU a una velocidad dada (instrucciones por tick). El avance parcial de
      * una instrucción (CPU de 500 MHz: media instrucción por tick) es parte del contexto del
      * proceso: se conserva si lo expropian y se descarta cuando termina, así ningún proceso le
-     * pasa instrucciones sobrantes a otro. Devuelve cuántas instrucciones completó en el tick.
+     * pasa instrucciones sobrantes a otro. Las instrucciones enteras que no alcanzó a usar en el tick
+     * (porque llegó a un pedido de E/S) no se acumulan. Devuelve cuántas instrucciones completó en el tick.
      */
     public int ejecutarTick(double instruccionesPorTick) {
         if (!(instruccionesPorTick > 0) || Double.isInfinite(instruccionesPorTick))
             throw new ParametroInvalidoException("La velocidad de la CPU debe ser > 0 instrucciones por tick");
         avance += instruccionesPorTick;
-        int n = (int) Math.min(Math.floor(avance), restante);
-        avance -= n;
+        int n = (int) Math.min(Math.min(Math.floor(avance), restante), hastaSiguientePedido());   // una CPU rápida no se salta un pedido
+        avance -= Math.floor(avance);   // lo que no alcanzó a usar en este tick (por un pedido de E/S) se pierde; solo queda la fracción
         usarCpu(n);
         if (restante == 0) avance = 0;
         return n;
@@ -125,6 +130,47 @@ public class Pcb {
         espacio = e;
     }
     public EspacioProceso espacio() { return espacio; }
+
+    /**
+     * [E2][P11] Asigna los pedidos de E/S que el proceso hará durante su ráfaga, antes de su admisión.
+     * Los instantes deben ser distintos, crecientes y estar entre 1 y burst − 1 (ecuación 5), así
+     * cada pedido ocurre con el proceso todavía vivo.
+     */
+    public void asignarPlanES(List<PedidoES> plan) {
+        if (estado != Estado.NUEVO) throw new EventoInvalidoException(this + " ya fue admitido: su plan de E/S no puede cambiar");
+        if (plan == null) throw new ParametroInvalidoException("Falta el plan de E/S de " + this);
+        int anterior = 0;
+        for (PedidoES pedido : plan) {
+            if (pedido == null || pedido.instante() <= anterior || pedido.instante() > burst - 1)
+                throw new ParametroInvalidoException(this + ": los pedidos de E/S deben ir en instantes crecientes entre 1 y " + (burst - 1));
+            anterior = pedido.instante();
+        }
+        planES = List.copyOf(plan);
+        siguientePedido = 0;
+    }
+
+    public List<PedidoES> planES() { return planES; }
+
+    /** Instrucciones ya ejecutadas de la ráfaga. */
+    public int ejecutadas() { return burst - restante; }
+
+    /** [E2] El pedido de E/S que toca ahora (el proceso llegó a su instante), si lo hay. */
+    public Optional<PedidoES> pedidoDebido() {
+        if (siguientePedido >= planES.size()) return Optional.empty();
+        PedidoES p = planES.get(siguientePedido);
+        return p.instante() == ejecutadas() ? Optional.of(p) : Optional.empty();
+    }
+
+    /** [E2] El Kernel ya hizo la llamada al sistema del pedido debido. */
+    public void marcarPedidoEmitido() {
+        if (pedidoDebido().isEmpty()) throw new EventoInvalidoException(this + " no tiene un pedido de E/S pendiente de emitir");
+        siguientePedido++;
+    }
+
+    /** Instrucciones que puede ejecutar antes de llegar al siguiente pedido de E/S. */
+    private int hastaSiguientePedido() {
+        return siguientePedido < planES.size() ? planES.get(siguientePedido).instante() - ejecutadas() : Integer.MAX_VALUE;
+    }
 
     /** [E6] Terminó uno de sus pedidos de E/S (la IRQ de fin también cuenta como interrupción suya). */
     public void completarPedidoES() {
