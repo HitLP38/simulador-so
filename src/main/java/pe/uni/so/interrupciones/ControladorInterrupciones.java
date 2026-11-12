@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -82,6 +83,15 @@ public class ControladorInterrupciones {
     public Optional<TipoInterrupcion> enServicio() { return Optional.ofNullable(isr.peek()); }
     public int anidamiento() { return isr.size(); }
     public int atendidas(TipoInterrupcion t) { return atendidas.getOrDefault(t, 0); }
+
+    /** [P16] IRR: pendientes, de mayor a menor prioridad. */
+    public List<TipoInterrupcion> pendientes() { return irr.stream().sorted(POR_PRIORIDAD).toList(); }
+    /** [P16] IMR: líneas enmascaradas, por número de IRQ. */
+    public List<TipoInterrupcion> enmascaradas() { return imr.stream().sorted(POR_PRIORIDAD).toList(); }
+    /** [P16] ISR: interrupciones en servicio, la más reciente (la de arriba de la pila) primero. */
+    public List<TipoInterrupcion> pilaEnServicio() { return List.copyOf(isr); }
+    /** [P16] Cuántas veces se atendió cada interrupción. */
+    public Map<TipoInterrupcion, Integer> atendidas() { return Map.copyOf(atendidas); }
 
     private static void exigirHardware(TipoInterrupcion t, String motivo) {
         if (esSincrona(t)) throw new EventoInvalidoException(t + " (0x" + Integer.toHexString(t.vector) + ") " + motivo);

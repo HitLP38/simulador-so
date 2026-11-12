@@ -110,6 +110,22 @@ public class GestorMemoria {
         return f;
     }
 
+    /** [P16] ¿El proceso recibió cuota en el reparto proporcional? */
+    public boolean tieneCuota(int pid) { return cuotas.containsKey(pid); }
+
+    /**
+     * [P16] Marcos de RAM que ocupa ahora el proceso: bajo demanda, las páginas cargadas en su
+     * cuota; con carga total, todos sus tramos. 0 si no es residente.
+     */
+    public int marcosOcupados(int pid) {
+        Residente r = residentes.get(pid);
+        if (r == null) return 0;
+        if (r.politica != null) return r.politica.ocupados();
+        int n = 0;
+        for (Tramo tr : r.tramos) n += tr.marcos();
+        return n;
+    }
+
     /** ¿Hay marcos libres suficientes ahora? (el reparto en varios huecos permite usar todos). */
     public boolean cabe(EspacioProceso e) { return paginasIniciales(e) <= mapa.libres(); }
 
