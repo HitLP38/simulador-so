@@ -133,4 +133,48 @@ class SesionSimulacionTest {
                 () -> new SesionSimulacion(m, () -> CreadorProcesos.loteOficial(d.pagina().bytes)));   // páginas de 64 KiB
         assertEquals(20, new SesionSimulacion(m).vista().procesos().size());   // con su propio tamaño sí
     }
+
+    @Test @DisplayName("[P16] Si la foto mirada sale del historial al acortarlo, se muestra la última y se avisa a los oyentes")
+    void limitarHistorialAvisa() {
+        SesionSimulacion s = lote();
+        s.irA(10);
+        s.irA(0);
+        List<Integer> vistos = new ArrayList<>();
+        s.alCambiar(f -> vistos.add(f.t()));
+        s.limitarHistorial(1);                                         // t = 0 ya no está: queda t = 10
+        assertEquals(10, s.vista().t());
+        assertEquals(List.of(10), vistos);
+        s.limitarHistorial(5);                                         // la foto sigue: no hay aviso
+        assertEquals(List.of(10), vistos);
+    }
+
+    @Test @DisplayName("[P16] El máximo alcanzado no baja al volver a simular un tick antiguo; reiniciar lo vuelve a 0")
+    void maximoAlcanzado() {
+        SesionSimulacion s = lote();
+        s.limitarHistorial(50);
+        s.irA(200);
+        assertEquals(200, s.maximoAlcanzado());
+        s.irA(30);                                                     // re-simula: el Kernel queda en 30
+        assertEquals(30, s.tActual());
+        assertEquals(200, s.maximoAlcanzado());                        // la línea de tiempo sigue llegando a 200
+        s.irA(150);
+        assertEquals(150, s.vista().t());
+        assertEquals(200, s.maximoAlcanzado());
+        s.reiniciar();
+        assertEquals(0, s.maximoAlcanzado());
+    }
+
+    @Test @DisplayName("[G5][P5] Con grado 1, el segundo proceso entra al liberarse la plaza: la sesión no se declara atascada antes")
+    void sinAtascoAlLiberarElGrado() {
+        Configuracion d = Configuracion.porDefecto();
+        Configuracion grado1 = new Configuracion(d.ram(), d.pagina(), d.cpu(), Configuracion.Politica.FCFS, d.quantum(), d.costoDespacho(), 1,
+                d.estrategia(), d.carga(), d.reemplazo(), d.dispositivos(), d.semilla());
+        SesionSimulacion s = new SesionSimulacion(new Maquina("Grado 1", grado1), () -> {
+            CreadorProcesos c = new CreadorProcesos(7, d.pagina().bytes);
+            return List.of(c.manual(0, 12, 200 * 1024L), c.manual(0, 12, 200 * 1024L));
+        });
+        s.hastaElFinal();
+        assertTrue(s.terminada(), "los dos procesos terminan");
+        assertFalse(s.atascada());
+    }
 }

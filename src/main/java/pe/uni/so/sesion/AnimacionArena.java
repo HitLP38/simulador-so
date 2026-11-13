@@ -93,9 +93,9 @@ public class AnimacionArena {
                 s.ruta.clear();
                 s.ruta.addAll(MapaEstados.ruta(s.sala, f.sala(), actual, f.destino()));
                 s.sala = f.sala();
-            } else if (destinoPrevio.distancia(f.destino()) > 0.5) {
-                s.ruta.clear();
-                s.ruta.add(f.destino());                          // se reacomodó dentro de su sala
+            } else if (destinoPrevio.distancia(f.destino()) > 0.5) {   // se reacomodó dentro de su sala:
+                if (!s.ruta.isEmpty()) s.ruta.removeLast();         // si aún camina, conserva el pasillo y solo
+                s.ruta.add(f.destino());                            // cambia el punto final
             }
         }
     }

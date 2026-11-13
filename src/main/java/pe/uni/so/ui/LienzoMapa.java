@@ -56,6 +56,7 @@ final class LienzoMapa extends Pane {
     private boolean ajusteAutomatico = true, sucio = true;   // se reajusta al cambiar de tamaño hasta que el usuario mueva o haga zoom
     private double xPrevio, yPrevio, recorrido;
     private long ultimoCuadro;
+    private final javafx.beans.value.ChangeListener<Boolean> oyenteTema = (o, a, v) -> sucio = true;
 
     private final AnimationTimer cuadros = new AnimationTimer() {
         @Override public void handle(long ahora) {
@@ -87,7 +88,7 @@ final class LienzoMapa extends Pane {
         canvas.widthProperty().addListener((o, a, v) -> alCambiarTamano());
         canvas.heightProperty().addListener((o, a, v) -> alCambiarTamano());
         setMinSize(200, 150);
-        App.temaClaro().addListener((o, a, v) -> sucio = true);
+        App.temaClaro().addListener(oyenteTema);
 
         setOnScroll(e -> {
             if (e.getDeltaY() == 0) return;
@@ -117,16 +118,31 @@ final class LienzoMapa extends Pane {
                 return;
             }
             if (diagrama == null || !vista.disponible) return;
-            int pid = animacion.pidEn(camara.aMundoX(e.getX()), camara.aMundoY(e.getY()),
-                    MapaEstados.FICHA_CPU_ANCHO, MapaEstados.FICHA_CPU_ALTO)
-                    .filter(x -> diagrama.ficha(x).map(f -> f.sala() != Sala.ES).orElse(false))   // los de tras la puerta no se ven
-                    .orElse(Instantanea.NINGUNO);
-            alElegir.accept(pid);
+            alElegir.accept(pidEn(camara.aMundoX(e.getX()), camara.aMundoY(e.getY())));
         });
         cuadros.start();
     }
 
     Camara camara() { return camara; }
+
+    /**
+     * Proceso bajo el punto (mx, my) del mundo, con el tamaño con que se dibuja cada ficha (la
+     * miniatura del origen es más chica que la de la CPU). Los que esperan tras la puerta de E/S
+     * no se dibujan y no se pueden elegir; gana la ficha dibujada encima.
+     */
+    private int pidEn(double mx, double my) {
+        java.util.List<AnimacionArena.Sprite> lista = new java.util.ArrayList<>(animacion.sprites());
+        for (int i = lista.size() - 1; i >= 0; i--) {
+            AnimacionArena.Sprite s = lista.get(i);
+            MapaEstados.Ficha f = diagrama.ficha(s.pid()).orElse(null);
+            if (f == null || (f.sala() == Sala.ES && !s.enMovimiento())) continue;
+            boolean mini = f.sala() == Sala.ORIGEN_SO && !s.enMovimiento(), cpu = f.sala() == Sala.CPU && !s.enMovimiento();
+            double w = cpu ? MapaEstados.FICHA_CPU_ANCHO : mini ? MapaEstados.FICHA_MINI_ANCHO : MapaEstados.FICHA_ANCHO;
+            double h = cpu ? MapaEstados.FICHA_CPU_ALTO : mini ? MapaEstados.FICHA_MINI_ALTO : MapaEstados.FICHA_ALTO;
+            if (Math.abs(mx - s.x()) <= w / 2 && Math.abs(my - s.y()) <= h / 2) return s.pid();
+        }
+        return Instantanea.NINGUNO;
+    }
 
     /** Muestra una foto: si es la siguiente, las fichas caminan; si no, se colocan. */
     void mostrar(Instantanea nueva) {
@@ -157,7 +173,10 @@ final class LienzoMapa extends Pane {
     }
 
     /** Detiene el ciclo de dibujo (al cerrar la ventana). */
-    void detener() { cuadros.stop(); }
+    void detener() {
+        cuadros.stop();
+        App.temaClaro().removeListener(oyenteTema);                  // la propiedad global no retiene este lienzo
+    }
 
     /** Encaja la arena en el lienzo (botón «Ajustar», doble clic o tecla F). */
     void ajustar() {

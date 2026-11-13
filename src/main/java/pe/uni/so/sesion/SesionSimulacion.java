@@ -29,6 +29,8 @@ public class SesionSimulacion {
 
     /** Tope de seguridad: ninguna corrida avanza más allá de este instante. */
     public static final int LIMITE_TICKS = 200_000;
+    /** Ticks seguidos sin progreso posible para declarar el atasco (deja reintentar la admisión). */
+    static final int TICKS_PARA_ATASCO = 2;
 
     private final Maquina maquina;
     private final Supplier<List<Pcb>> carga;
@@ -36,6 +38,10 @@ public class SesionSimulacion {
     private Kernel kernel;
     private Instantanea vista;
     private boolean atascada;
+    private int ticksSinProgreso;                               // ticks seguidos sin progreso posible
+    private int maximoAlcanzado;                                // el mayor instante simulado (sobrevive a re-simular)
+    /** Fines de quantum (interrupción del TIMER) acumulados hasta cada instante: índice = t. */
+    private final List<Integer> finesQuantum = new ArrayList<>(List.of(0));
     private int capacidadHistorial = Kernel.CAPACIDAD_HISTORIAL;
 
     /** Sesión con el lote oficial de 20 procesos, en páginas del tamaño de la máquina. */
@@ -57,6 +63,8 @@ public class SesionSimulacion {
     }
 
     private Kernel crearKernel() {
+        finesQuantum.clear();                                       // el acumulado se rehace al simular de nuevo
+        finesQuantum.add(0);
         Kernel k = maquina.configuracion().crearKernel(carga.get());
         k.limitarHistorial(capacidadHistorial);
         return k;
@@ -69,7 +77,10 @@ public class SesionSimulacion {
     public void limitarHistorial(int capacidad) {
         kernel.limitarHistorial(capacidad);                 // valida la capacidad
         capacidadHistorial = capacidad;
-        if (kernel.instantanea(vista.t()).isEmpty()) vista = kernel.instantanea();
+        if (kernel.instantanea(vista.t()).isEmpty()) {             // la foto mirada salió del historial:
+            vista = kernel.instantanea();                           // se muestra la última y se avisa
+            avisar();
+        }
     }
 
     // ---------------------------------------------------------------- consultas
@@ -94,6 +105,22 @@ public class SesionSimulacion {
      * Nuevo sin memoria). También se marca al llegar a {@link #LIMITE_TICKS}.
      */
     public boolean atascada() { return atascada; }
+
+    /**
+     * El mayor instante simulado en esta sesión. Volver a simular un tick antiguo no lo reduce: la
+     * línea de tiempo sigue ofreciendo hasta aquí. Reiniciar lo vuelve a 0.
+     */
+    public int maximoAlcanzado() { return maximoAlcanzado; }
+
+    /**
+     * Fines de quantum acumulados hasta el instante t: cada uno es una interrupción del TIMER que
+     * devuelve el proceso a listos (momento b). El motor marca cada uno con la insignia
+     * {@code FIN_QUANTUM} solo en su tick; la sesión los suma al simular.
+     */
+    public int finesDeQuantum(int t) {
+        if (t < 0) throw new ParametroInvalidoException("El instante no puede ser negativo (" + t + ")");
+        return finesQuantum.get(Math.min(t, finesQuantum.size() - 1));
+    }
 
     /** ¿Se puede avanzar desde la foto mirada? */
     public boolean puedeAvanzar() { return !enVivo() || (!terminada() && !atascada); }
@@ -146,6 +173,7 @@ public class SesionSimulacion {
             else {                                           // más antigua que el historial: re-simular
                 kernel = crearKernel();
                 atascada = false;
+                ticksSinProgreso = 0;
                 while (kernel.t() < t && !atascada) simularUnTick();
                 vista = kernel.instantanea();
             }
@@ -164,6 +192,8 @@ public class SesionSimulacion {
     public void reiniciar() {
         kernel = crearKernel();
         atascada = false;
+        ticksSinProgreso = 0;
+        maximoAlcanzado = 0;
         vista = kernel.instantanea();
         avisar();
     }
@@ -175,7 +205,13 @@ public class SesionSimulacion {
         }
         kernel.paso();
         vista = kernel.instantanea();
-        atascada = sinProgresoPosible(vista);
+        maximoAlcanzado = Math.max(maximoAlcanzado, kernel.t());
+        long fines = vista.procesos().stream().filter(p -> p.tiene(Instantanea.Insignia.FIN_QUANTUM)).count();
+        finesQuantum.add(finesQuantum.get(finesQuantum.size() - 1) + (int) fines);
+        // Un tick sin progreso no basta: al terminar un proceso se libera memoria o grado después
+        // del intento de admisión, y el que espera en Nuevo entra recién en el tick siguiente.
+        ticksSinProgreso = sinProgresoPosible(vista) ? ticksSinProgreso + 1 : 0;
+        atascada = ticksSinProgreso >= TICKS_PARA_ATASCO;
     }
 
     /** CPU libre, nadie listo, sin E/S ni interrupciones pendientes y sin llegadas futuras. */

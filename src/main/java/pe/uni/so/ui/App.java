@@ -3,12 +3,15 @@ package pe.uni.so.ui;
 import javafx.application.Application;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.WeakChangeListener;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Tooltip;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
+import javafx.stage.WindowEvent;
 import pe.uni.so.configuracion.GestorMaquinas;
 import pe.uni.so.configuracion.RepositorioMaquinas;
 
@@ -46,9 +49,16 @@ public class App extends Application {
     static void aplicarTema(Scene escena) {
         escena.getStylesheets().setAll(estilos());
         if (TEMA_CLARO.get()) escena.getStylesheets().add(estilosClaros());
-        TEMA_CLARO.addListener((o, a, claro) -> {
+        ChangeListener<Boolean> oyente = (o, a, claro) -> {
             escena.getStylesheets().remove(estilosClaros());
             if (claro) escena.getStylesheets().add(estilosClaros());
+        };
+        TEMA_CLARO.addListener(oyente);
+        // al cerrar la ventana se quita el oyente: la propiedad global no retiene la escena cerrada
+        Runnable alCerrar = () -> TEMA_CLARO.removeListener(oyente);
+        if (escena.getWindow() != null) escena.getWindow().addEventHandler(WindowEvent.WINDOW_HIDDEN, e -> alCerrar.run());
+        else escena.windowProperty().addListener((o, a, w) -> {
+            if (w != null) w.addEventHandler(WindowEvent.WINDOW_HIDDEN, e -> alCerrar.run());
         });
     }
 
@@ -61,7 +71,9 @@ public class App extends Application {
             b.setTooltip(new Tooltip(TEMA_CLARO.get() ? "Cambiar a tema oscuro" : "Cambiar a tema claro"));
         };
         rotular.run();
-        TEMA_CLARO.addListener((o, a, v) -> rotular.run());
+        ChangeListener<Boolean> oyente = (o, a, v) -> rotular.run();
+        b.getProperties().put("oyenteTema", oyente);                 // vive lo que viva el botón
+        TEMA_CLARO.addListener(new WeakChangeListener<>(oyente));    // la propiedad global no retiene el botón
         b.setOnAction(e -> TEMA_CLARO.set(!TEMA_CLARO.get()));
         return b;
     }

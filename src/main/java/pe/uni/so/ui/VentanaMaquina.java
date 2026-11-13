@@ -110,6 +110,16 @@ final class VentanaMaquina {
         @Override public String toString() { return texto; }
     }
 
+    /** Ticks que «Hasta el final» simula por cuadro antes de devolver el control a JavaFX. */
+    private static final int LOTE_HASTA_EL_FINAL = 400;
+    private boolean corriendoLotes;
+    private final AnimationTimer lotes = new AnimationTimer() {
+        @Override public void handle(long ahora) {
+            accion(() -> sesion.avanzar(LOTE_HASTA_EL_FINAL));
+            if (!sesion.puedeAvanzar()) detenerLotes();
+        }
+    };
+
     private final AnimationTimer animacion = new AnimationTimer() {
         @Override public void handle(long ahora) {
             long dt = ultimoCuadro == 0 ? 0 : ahora - ultimoCuadro;
@@ -169,6 +179,7 @@ final class VentanaMaquina {
         ventana.setMaximized(true);                                     // la barra de título y sus botones siempre a la vista
         ventana.setOnHidden(e -> {
             animacion.stop();
+            lotes.stop();
             lienzo.detener();
         });
         return ventana;
@@ -182,7 +193,7 @@ final class VentanaMaquina {
         MenuItem avanzarMenu = item("Avanzar 1 tick", "→", () -> accion(() -> sesion.avanzar(1)));
         MenuItem retrocederMenu = item("Retroceder 1 tick", "←", () -> accion(() -> sesion.retroceder(1)));
         MenuItem reiniciarMenu = item("Reiniciar (t = 0)", "Inicio", () -> { pausar(); accion(sesion::reiniciar); });
-        MenuItem finalMenu = item("Hasta el final", "Fin", () -> { pausar(); accion(sesion::hastaElFinal); });
+        MenuItem finalMenu = item("Hasta el final", "Fin", this::alternarHastaElFinal);
         Menu simulacion = new Menu("Simulación", null, reproducirMenu, avanzarMenu, retrocederMenu, new SeparatorMenuItem(),
                 reiniciarMenu, finalMenu);
 
@@ -258,7 +269,7 @@ final class VentanaMaquina {
         pasoAtras.setOnAction(e -> accion(() -> sesion.retroceder(1)));
         pasoAdelante.setOnAction(e -> accion(() -> sesion.avanzar(1)));
         reiniciar.setOnAction(e -> { pausar(); accion(sesion::reiniciar); });
-        alFinal.setOnAction(e -> { pausar(); accion(sesion::hastaElFinal); });
+        alFinal.setOnAction(e -> alternarHastaElFinal());
 
         Button menos = boton("−", "Alejar");
         menos.setOnAction(e -> lienzo.zoom(1 / Camara.PASO_ZOOM));
@@ -391,10 +402,11 @@ final class VentanaMaquina {
         linea.valueProperty().addListener((o, a, v) -> {
             if (moviendoLinea) return;
             int t = (int) Math.round(v.doubleValue());
-            if (t != sesion.vista().t()) {
-                pausar();
-                accion(() -> sesion.irA(t));
-            }
+            instante.setText("t = " + t + " / " + sesion.maximoAlcanzado());
+            if (!linea.isValueChanging()) irALinea(t);                // clic o teclado: salta ya
+        });
+        linea.valueChangingProperty().addListener((o, a, arrastrando) -> {
+            if (!arrastrando) irALinea((int) Math.round(linea.getValue()));   // al soltar: un solo salto
         });
         instante.getStyleClass().add("instante");
         instante.setMinWidth(170);
@@ -448,16 +460,16 @@ final class VentanaMaquina {
         foto.proceso(seleccionado).ifPresent(p -> tablaPcb.getItems().stream().filter(x -> x.pid() == p.pid()).findFirst()
                 .ifPresent(x -> tablaPcb.getSelectionModel().select(x)));
         actualizandoTabla = false;
-        panelEventos.mostrar(foto);
+        panelEventos.mostrar(foto, sesion.finesDeQuantum(foto.t()));
         moviendoLinea = true;
-        linea.setMax(Math.max(1, sesion.tActual()));
+        linea.setMax(Math.max(1, sesion.maximoAlcanzado()));      // re-simular un tick antiguo no acorta la línea
         linea.setValue(foto.t());
         moviendoLinea = false;
-        instante.setText("t = " + foto.t() + " / " + sesion.tActual());
+        instante.setText("t = " + foto.t() + " / " + sesion.maximoAlcanzado());
         estado.setText(Propiedades.barraEstado(foto, sesion.enVivo(), sesion.tActual(), sesion.terminada(), sesion.atascada()));
         boolean puede = sesion.puedeAvanzar();
         pasoAdelante.setDisable(!puede);
-        alFinal.setDisable(!puede);
+        alFinal.setDisable(!puede && !corriendoLotes);
         pasoAtras.setDisable(foto.t() == 0);
         if (!puede && !reproductor.reproduciendo()) reproducir.setDisable(true);
         else reproducir.setDisable(false);
@@ -521,6 +533,39 @@ final class VentanaMaquina {
         }
         TreeItem<Nodo> item = itemsProceso.get(pid);
         if (item != null && explorador.getSelectionModel().getSelectedItem() != item) explorador.getSelectionModel().select(item);
+        else if (item == null && pid == Instantanea.NINGUNO) explorador.getSelectionModel().clearSelection();   // un nuevo clic vuelve a elegirlo
+    }
+
+    /** Salta al tick elegido en la línea de tiempo (una vez por clic o al soltar el arrastre). */
+    private void irALinea(int t) {
+        if (t == sesion.vista().t()) return;
+        pausar();
+        accion(() -> sesion.irA(t));
+    }
+
+    /**
+     * «Hasta el final» en lotes de {@link #LOTE_HASTA_EL_FINAL} ticks por cuadro: la ventana se
+     * sigue repintando y el mismo botón (o Fin) lo detiene. Una corrida larga no congela la interfaz.
+     */
+    private void alternarHastaElFinal() {
+        if (corriendoLotes) {
+            detenerLotes();
+            return;
+        }
+        pausar();
+        if (!sesion.puedeAvanzar()) return;
+        corriendoLotes = true;
+        alFinal.setText("■");
+        alFinal.setTooltip(new Tooltip("Detener (Fin)"));
+        lotes.start();
+    }
+
+    private void detenerLotes() {
+        lotes.stop();
+        corriendoLotes = false;
+        alFinal.setText("⏭");
+        alFinal.setTooltip(new Tooltip("Simular hasta que terminen todos (Fin)"));
+        alFinal.setDisable(!sesion.puedeAvanzar());
     }
 
     private void elegirVista(Vista v) {
@@ -540,6 +585,7 @@ final class VentanaMaquina {
     }
 
     private void pausar() {
+        if (corriendoLotes) detenerLotes();
         reproductor.pausar();
         lienzo.velocidadReproduccion(1);                                   // paso a paso: se ve todo el recorrido
         animacion.stop();
@@ -556,7 +602,7 @@ final class VentanaMaquina {
             case RIGHT -> { if (!pasoAdelante.isDisabled()) accion(() -> sesion.avanzar(1)); }
             case LEFT -> { if (!pasoAtras.isDisabled()) accion(() -> sesion.retroceder(1)); }
             case HOME -> { pausar(); accion(sesion::reiniciar); }
-            case END -> { if (!alFinal.isDisabled()) { pausar(); accion(sesion::hastaElFinal); } }
+            case END -> { if (!alFinal.isDisabled()) alternarHastaElFinal(); }
             case F -> lienzo.ajustar();
             default -> { return; }
         }

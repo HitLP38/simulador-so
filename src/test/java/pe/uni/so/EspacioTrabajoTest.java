@@ -293,4 +293,65 @@ class EspacioTrabajoTest {
                 Set.copyOf(java.util.Arrays.stream(Vista.values()).filter(v -> !v.disponible).toList()));
         assertEquals("Arena del kernel", Vista.MAPA_ESTADOS.toString());
     }
+
+    @Test @DisplayName("[G5] Si una ficha que camina se reacomoda en su sala, conserva los pasillos y solo cambia el destino final")
+    void reacomodoConservaRuta() {
+        MapaEstados.Cpu cpu = new MapaEstados.Cpu("USUARIO", "RR", Instantanea.NINGUNO, 0, 0, 0, 0, 0, 0, 0, List.of(), List.of());
+        java.util.function.BiFunction<Integer, MapaEstados.Ficha, MapaEstados.Diagrama> diagrama = (t, f) ->
+                new MapaEstados.Diagrama(t, MapaEstados.ANCHO, MapaEstados.ALTO, List.of(), List.of(), List.of(), List.of(), List.of(f), cpu, false, 0);
+        java.util.function.BiFunction<Sala, Punto, MapaEstados.Ficha> ficha = (sala, p) ->
+                new MapaEstados.Ficha(1, Estado.LISTO, sala, ColorEstado.LISTO, true, Set.of(), 3, 10, false, false, p);
+        AnimacionArena a = new AnimacionArena();
+        a.mostrar(diagrama.apply(1, ficha.apply(Sala.CPU, MapaEstados.PUNTO_CPU)));
+        Punto casillaA = new Punto(450, 160), casillaB = new Punto(560, 160);
+        a.mostrar(diagrama.apply(2, ficha.apply(Sala.LISTOS, casillaA)));      // desalojo: CPU → retorno → listos
+        List<Punto> ruta = a.sprite(1).orElseThrow().ruta();
+        assertTrue(ruta.size() > 2, ruta.toString());
+        a.mostrar(diagrama.apply(3, ficha.apply(Sala.LISTOS, casillaB)));      // la cola se reordenó mientras caminaba
+        List<Punto> nueva = a.sprite(1).orElseThrow().ruta();
+        assertEquals(ruta.subList(0, ruta.size() - 1), nueva.subList(0, nueva.size() - 1));   // mismos pasillos
+        assertEquals(casillaB, nueva.get(nueva.size() - 1));
+    }
+
+    @Test @DisplayName("[G5] «+N» cuenta solo los procesos que no se ven: 19 en Creación con lugar para 12 → +7")
+    void excesoCuentaLosOcultos() {
+        Configuracion d = Configuracion.porDefecto();
+        Configuracion grado1 = new Configuracion(d.ram(), d.pagina(), d.cpu(), Politica.FCFS, d.quantum(), d.costoDespacho(), 1,
+                d.estrategia(), d.carga(), d.reemplazo(), d.dispositivos(), d.semilla());
+        SesionSimulacion s = new SesionSimulacion(new Maquina("Grado 1", grado1), () -> {
+            pe.uni.so.procesos.CreadorProcesos c = new pe.uni.so.procesos.CreadorProcesos(7, d.pagina().bytes);
+            List<pe.uni.so.procesos.Pcb> l = new java.util.ArrayList<>();
+            for (int i = 0; i < 20; i++) l.add(c.manual(0, 12, 200 * 1024L));
+            return l;
+        });
+        s.avanzar(2);
+        MapaEstados.Diagrama dg = MapaEstados.de(s.vista(), Politica.FCFS);
+        MapaEstados.SalaDibujo creacion = dg.sala(Sala.CREACION);
+        assertEquals(19, creacion.cantidad());
+        assertEquals(19 - 12, creacion.exceso());
+        assertEquals(12, dg.fichas().stream().filter(f -> f.sala() == Sala.CREACION).map(MapaEstados.Ficha::destino).distinct().count());
+    }
+
+    @Test @DisplayName("[G5] Eventos varios: TIMER cuenta los fines de quantum acumulados y las expropiaciones van aparte")
+    void timerYExpropiaciones() {
+        SesionSimulacion s = new SesionSimulacion(Maquina.porDefecto());
+        int esperado = 0;
+        for (int t = 0; t < 200; t++) {                                // suma tick a tick las insignias FIN_QUANTUM
+            s.avanzar(1);
+            esperado += (int) s.vista().procesos().stream().filter(p -> p.tiene(Instantanea.Insignia.FIN_QUANTUM)).count();
+            assertEquals(esperado, s.finesDeQuantum(s.vista().t()));
+        }
+        assertTrue(esperado > 0, "con RR q=4 se agota el quantum");
+        int en100 = s.finesDeQuantum(100);
+        s.retroceder(100);                                             // mirando el pasado, el contador es el de ese tick
+        assertEquals(en100, s.finesDeQuantum(s.vista().t()));
+        Instantanea f = s.vista();
+        List<Propiedades.Fila> k = Propiedades.deKernel(f, en100);
+        assertEquals(Integer.toString(en100), k.stream().filter(x -> x.clave().equals("TIMER (fin de quantum)")).findFirst().orElseThrow().valor());
+        assertEquals(Integer.toString(f.cpu().desalojos()), k.stream().filter(x -> x.clave().equals("Expropiaciones")).findFirst().orElseThrow().valor());
+        assertEquals("—", Propiedades.deKernel(f).stream().filter(x -> x.clave().equals("TIMER (fin de quantum)")).findFirst().orElseThrow().valor());
+        s.reiniciar();
+        assertEquals(0, s.finesDeQuantum(0));
+        assertThrows(ParametroInvalidoException.class, () -> s.finesDeQuantum(-1));
+    }
 }

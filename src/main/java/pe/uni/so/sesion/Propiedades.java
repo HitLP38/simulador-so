@@ -72,7 +72,13 @@ public final class Propiedades {
      * Pestaña «Kernel»: lo que en la arena son módulos compactos. Señales (registros del PIC
      * 8259), eventos varios (TIMER, expropiaciones, aborts), dispositivos y despachador.
      */
-    public static List<Fila> deKernel(Instantanea f) {
+    public static List<Fila> deKernel(Instantanea f) { return deKernel(f, -1); }
+
+    /**
+     * @param finesDeQuantum interrupciones del TIMER por fin de quantum acumuladas hasta la foto
+     *                       ({@link SesionSimulacion#finesDeQuantum}), o -1 si no se conocen
+     */
+    public static List<Fila> deKernel(Instantanea f, int finesDeQuantum) {
         exigir(f);
         List<Fila> filas = new ArrayList<>();
         Instantanea.Pic pic = f.pic();
@@ -83,7 +89,8 @@ public final class Propiedades {
                 : pic.atendidas().entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())
                 .map(e -> e.getKey().name() + " " + e.getValue()).collect(Collectors.joining(", "))));
         Instantanea.Cpu c = f.cpu();
-        filas.add(new Fila("Eventos varios", "TIMER (desalojos)", Integer.toString(c.desalojos())));
+        filas.add(new Fila("Eventos varios", "TIMER (fin de quantum)", finesDeQuantum < 0 ? "—" : Integer.toString(finesDeQuantum)));
+        filas.add(new Fila("Eventos varios", "Expropiaciones", Integer.toString(c.desalojos())));
         filas.add(new Fila("Eventos varios", "Fin de quantum", pidsCon(f, Instantanea.Insignia.FIN_QUANTUM)));
         filas.add(new Fila("Eventos varios", "Expropiados", pidsCon(f, Instantanea.Insignia.EXPROPIADO)));
         String aborts = f.procesos().stream().filter(p -> p.error() != null)

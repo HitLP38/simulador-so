@@ -16,7 +16,7 @@
 
 .titulo, .titulo-detalle { -fx-text-fill: #0f172a; }
 .subtitulo, .nota, .etiqueta-campo { -fx-text-fill: #64748b; }
-.estado { -fx-text-fill: #64748b; }
+.estado, .barra-estado .estado { -fx-text-fill: #64748b; }
 .valor-campo, .dato-calculado, .nombre-maquina { -fx-text-fill: #0f172a; }
 .resumen-maquina { -fx-text-fill: #64748b; }
 .titulo-tarjeta, .grupo-propiedad, .seccion > .title > .text { -fx-text-fill: #0e7490; -fx-fill: #0e7490; }

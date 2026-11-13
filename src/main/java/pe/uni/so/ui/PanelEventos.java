@@ -76,7 +76,7 @@ final class PanelEventos extends VBox {
     }
 
     /** Actualiza las tres tarjetas con la foto mirada. */
-    void mostrar(Instantanea f) {
+    void mostrar(Instantanea f, int finesDeQuantum) {
         colaES.getChildren().clear();
         java.util.Set<Integer> enDispositivo = new java.util.HashSet<>();
         for (Instantanea.FichaDispositivo d : f.dispositivos()) {
@@ -99,7 +99,7 @@ final class PanelEventos extends VBox {
             otros.forEach(p -> chips.getChildren().add(chip(f, p, false)));
             colaES.getChildren().add(columna("Otros", "", false, chips));
         }
-        List<Propiedades.Fila> kernel = Propiedades.deKernel(f);
+        List<Propiedades.Fila> kernel = Propiedades.deKernel(f, finesDeQuantum);
         pintar(senales, kernel, "Señales (PIC 8259)");
         pintar(eventos, kernel, "Eventos varios", "Despachador");
     }

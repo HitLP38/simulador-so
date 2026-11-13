@@ -309,7 +309,7 @@ public final class MapaEstados {
             Instantanea.Proceso pr = procesos.get(i);
             fichas.add(ficha(pr, s, pr.pid() == siguiente, i >= capacidad, p));
         }
-        if (procesos.size() > capacidad) excesos.put(s, procesos.size() - capacidad + 1);
+        if (procesos.size() > capacidad) excesos.put(s, procesos.size() - capacidad);   // los que no se ven
     }
 
     /** Cola de listos en un carril por nivel de prioridad; devuelve el mapa de bits de niveles ocupados. */
@@ -333,7 +333,7 @@ public final class MapaEstados {
                 fichas.add(ficha(p, Sala.LISTOS, p.pid() == siguiente, j >= porCarril,
                         new Punto(carril.x() + 36 + FICHA_ANCHO / 2 + k * PASO_FICHA, y)));
             }
-            exceso += Math.max(0, enNivel.size() - porCarril + 1) * (enNivel.size() > porCarril ? 1 : 0);
+            exceso += Math.max(0, enNivel.size() - porCarril);
         }
         if (exceso > 0) excesos.put(Sala.LISTOS, exceso);
         return mapa;
