@@ -1,5 +1,6 @@
 package pe.uni.so.ui;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +57,7 @@ import pe.uni.so.motor.Instantanea;
 import pe.uni.so.procesos.Estado;
 import pe.uni.so.sesion.Camara;
 import pe.uni.so.sesion.MapaEstados;
+import pe.uni.so.sesion.PlanCarga;
 import pe.uni.so.sesion.Propiedades;
 import pe.uni.so.sesion.Reproductor;
 import pe.uni.so.sesion.SesionSimulacion;
@@ -94,6 +96,10 @@ final class VentanaMaquina {
     private final Button pasoAdelante = boton("▶|", "Avanzar 1 tick (→)");
     private final Button reiniciar = boton("⏮", "Volver a t = 0 (Inicio)");
     private final Button alFinal = boton("⏭", "Simular hasta que terminen todos (Fin)");
+    private final Button ingresar = boton("＋ Proceso", "Ingresar un proceso (usuario) en el instante simulado (P)");
+    private final Button generar = boton("＋ N", "Generar N procesos aleatorios (SO) desde el tick siguiente (G)");
+    private final PlanCarga plan;
+    private TreeItem<Nodo> nodoProcesos;
     private final Slider linea = new Slider(0, 1, 0);
     private final Label instante = new Label();
     private final Label estado = new Label();
@@ -130,16 +136,18 @@ final class VentanaMaquina {
         }
     };
 
-    private VentanaMaquina(Maquina maquina) {
+    private VentanaMaquina(Maquina maquina, PlanCarga plan) {
         this.maquina = maquina;
-        this.sesion = new SesionSimulacion(maquina);             // valida que el lote quepa en la máquina
+        this.plan = plan;
+        long bloque = maquina.configuracion().pagina().bytes;
+        this.sesion = new SesionSimulacion(maquina, () -> plan.procesos(bloque));   // valida que la carga quepa en la máquina
         this.lienzo = new LienzoMapa(maquina.configuracion().politica(), this::elegirProceso, this::actualizarZoom);
         panelExplorador = armarExplorador();
         panelPropiedades = armarPropiedades();
     }
 
-    /** Arma la ventana de la máquina con el lote oficial cargado en t = 0. */
-    static Stage crear(Maquina maquina) { return new VentanaMaquina(maquina).armar(); }
+    /** Arma la ventana de la máquina con la carga elegida en la ventana de carga, en t = 0. */
+    static Stage crear(Maquina maquina, PlanCarga plan) { return new VentanaMaquina(maquina, plan).armar(); }
 
     private Stage armar() {
         BorderPane raiz = new BorderPane();
@@ -194,8 +202,12 @@ final class VentanaMaquina {
         MenuItem retrocederMenu = item("Retroceder 1 tick", "←", () -> accion(() -> sesion.retroceder(1)));
         MenuItem reiniciarMenu = item("Reiniciar (t = 0)", "Inicio", () -> { pausar(); accion(sesion::reiniciar); });
         MenuItem finalMenu = item("Hasta el final", "Fin", this::alternarHastaElFinal);
+        MenuItem ingresarMenu = item("Ingresar proceso…", "P", this::ingresarProceso);
+        MenuItem generarMenu = item("Generar N procesos…", "G", this::generarProcesos);
+        ingresarMenu.disableProperty().bind(ingresar.disabledProperty());
+        generarMenu.disableProperty().bind(generar.disabledProperty());
         Menu simulacion = new Menu("Simulación", null, reproducirMenu, avanzarMenu, retrocederMenu, new SeparatorMenuItem(),
-                reiniciarMenu, finalMenu);
+                reiniciarMenu, finalMenu, new SeparatorMenuItem(), ingresarMenu, generarMenu);
 
         CheckMenuItem explorador = new CheckMenuItem("Explorador");
         explorador.selectedProperty().bindBidirectional(verExplorador);
@@ -270,6 +282,8 @@ final class VentanaMaquina {
         pasoAdelante.setOnAction(e -> accion(() -> sesion.avanzar(1)));
         reiniciar.setOnAction(e -> { pausar(); accion(sesion::reiniciar); });
         alFinal.setOnAction(e -> alternarHastaElFinal());
+        ingresar.setOnAction(e -> ingresarProceso());
+        generar.setOnAction(e -> generarProcesos());
 
         Button menos = boton("−", "Alejar");
         menos.setOnAction(e -> lienzo.zoom(1 / Camara.PASO_ZOOM));
@@ -285,9 +299,9 @@ final class VentanaMaquina {
         Label info = new Label("ⓘ");                                    // nombre y características de la máquina, sin ocupar espacio
         info.getStyleClass().add("info-maquina");
         info.setTooltip(new Tooltip(maquina.nombre() + "\n" + FichaMaquina.resumen(maquina.configuracion())
-                + "\nCarga: lote oficial de 20 procesos"));
+                + "\nCarga: " + plan.descripcion()));
         HBox barra = new HBox(6, menus(), separador(), etiquetaVista, selectorVista, separador(), reiniciar, pasoAtras, reproducir,
-                pasoAdelante, alFinal, velocidad, hueco, menos, zoom, mas, ajustar, separador(), info, App.botonTema());
+                pasoAdelante, alFinal, velocidad, separador(), ingresar, generar, hueco, menos, zoom, mas, ajustar, separador(), info, App.botonTema());
         barra.setAlignment(Pos.CENTER_LEFT);
         barra.getStyleClass().add("barra-herramientas");
         return barra;
@@ -298,11 +312,8 @@ final class VentanaMaquina {
         TreeItem<Nodo> vistas = new TreeItem<>(new Nodo("Vistas", null, Instantanea.NINGUNO));
         for (Vista v : Vista.values()) vistas.getChildren().add(new TreeItem<>(new Nodo(v.etiqueta, v, Instantanea.NINGUNO)));
         TreeItem<Nodo> procesos = new TreeItem<>(new Nodo("Procesos", null, Instantanea.NINGUNO));
-        for (Instantanea.Proceso p : sesion.vista().procesos()) {
-            TreeItem<Nodo> item = new TreeItem<>(new Nodo("P" + p.pid(), null, p.pid()), new Circle(5));
-            itemsProceso.put(p.pid(), item);
-            procesos.getChildren().add(item);
-        }
+        nodoProcesos = procesos;
+        sincronizarExplorador(sesion.vista());
         raiz.getChildren().addAll(List.of(vistas, procesos));
         raiz.setExpanded(true);
         vistas.setExpanded(true);
@@ -449,7 +460,39 @@ final class VentanaMaquina {
     // ---------------------------------------------------------------- reacciones
 
     /** Muestra una foto: lienzo, explorador, propiedades, línea de tiempo y barra de estado. */
+    /**
+     * [P18] El explorador lista los procesos de la foto mirada: crece con los ingresos y, si se
+     * mira un instante anterior a un ingreso, no muestra los que aún no existían.
+     */
+    private void sincronizarExplorador(Instantanea foto) {
+        if (foto.procesos().size() == itemsProceso.size()) return;      // los procesos solo se agregan al final
+        itemsProceso.clear();
+        List<TreeItem<Nodo>> hijos = new ArrayList<>(foto.procesos().size());
+        for (Instantanea.Proceso p : foto.procesos()) {
+            TreeItem<Nodo> item = new TreeItem<>(new Nodo("P" + p.pid() + (p.usuario() ? " · usuario" : ""), null, p.pid()), new Circle(5));
+            itemsProceso.put(p.pid(), item);
+            hijos.add(item);
+        }
+        nodoProcesos.getChildren().setAll(hijos);
+    }
+
+    /** [P18] «+ Proceso»: pausa y pide los datos de un proceso que ingresa el usuario. */
+    private void ingresarProceso() {
+        if (ingresar.isDisabled()) return;
+        pausar();
+        IngresoDialogo.proceso(ventana, sesion.tActual()).ifPresent(d ->
+                accion(() -> sesion.ingresarManual(d.llegada(), d.burst(), d.kib() * 1024L, d.prioridad())));
+    }
+
+    /** [P14] «Generar N»: pausa y pide cuántos procesos aleatorios crea el SO. */
+    private void generarProcesos() {
+        if (generar.isDisabled()) return;
+        pausar();
+        IngresoDialogo.generar(ventana).ifPresent(n -> accion(() -> sesion.generar(n)));
+    }
+
     private void mostrar(Instantanea foto) {
+        sincronizarExplorador(foto);
         lienzo.mostrar(foto);
         for (Instantanea.Proceso p : foto.procesos()) {
             TreeItem<Nodo> item = itemsProceso.get(p.pid());
@@ -472,6 +515,8 @@ final class VentanaMaquina {
         pasoAdelante.setDisable(!puede);
         alFinal.setDisable(!puede && !corriendoLotes);
         pasoAtras.setDisable(foto.t() == 0);
+        ingresar.setDisable(!sesion.puedeIngresar());
+        generar.setDisable(!sesion.puedeIngresar());
         if (!puede && !reproductor.reproduciendo()) reproducir.setDisable(true);
         else reproducir.setDisable(false);
     }
@@ -606,6 +651,8 @@ final class VentanaMaquina {
             case HOME -> { pausar(); accion(sesion::reiniciar); }
             case END -> { if (!alFinal.isDisabled()) alternarHastaElFinal(); }
             case F -> lienzo.ajustar();
+            case P -> ingresarProceso();
+            case G -> generarProcesos();
             default -> { return; }
         }
         e.consume();

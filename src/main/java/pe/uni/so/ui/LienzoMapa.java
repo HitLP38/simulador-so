@@ -136,7 +136,7 @@ final class LienzoMapa extends Pane {
             AnimacionArena.Sprite s = lista.get(i);
             MapaEstados.Ficha f = diagrama.ficha(s.pid()).orElse(null);
             if (f == null || (f.sala() == Sala.ES && !s.enMovimiento())) continue;
-            boolean mini = f.sala() == Sala.ORIGEN_SO && !s.enMovimiento(), cpu = f.sala() == Sala.CPU && !s.enMovimiento();
+            boolean mini = f.sala().origen() && !s.enMovimiento(), cpu = f.sala() == Sala.CPU && !s.enMovimiento();
             double w = cpu ? MapaEstados.FICHA_CPU_ANCHO : mini ? MapaEstados.FICHA_MINI_ANCHO : MapaEstados.FICHA_ANCHO;
             double h = cpu ? MapaEstados.FICHA_CPU_ALTO : mini ? MapaEstados.FICHA_MINI_ALTO : MapaEstados.FICHA_ALTO;
             if (Math.abs(mx - s.x()) <= w / 2 && Math.abs(my - s.y()) <= h / 2) return s.pid();
@@ -383,7 +383,7 @@ final class LienzoMapa extends Pane {
         g.setGlobalAlpha(1);
         boolean quieta = !s.enMovimiento();
         if (f.sala() == Sala.ES && quieta) return;                           // bloqueado: espera tras la puerta de E/S
-        boolean mini = f.sala() == Sala.ORIGEN_SO && quieta;
+        boolean mini = f.sala().origen() && quieta;
         boolean cpu = f.sala() == Sala.CPU && quieta, dorada = f.siguiente() && quieta;
         double w = cpu ? MapaEstados.FICHA_CPU_ANCHO : mini ? MapaEstados.FICHA_MINI_ANCHO : MapaEstados.FICHA_ANCHO;
         double h = cpu ? MapaEstados.FICHA_CPU_ALTO : mini ? MapaEstados.FICHA_MINI_ALTO : MapaEstados.FICHA_ALTO;

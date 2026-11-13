@@ -4,7 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.Collections;
 import pe.uni.so.configuracion.Maquina;
+import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.motor.Instantanea;
 import pe.uni.so.motor.Kernel;
@@ -19,8 +21,9 @@ import pe.uni.so.procesos.Pcb;
  * simulación, y al avanzar desde el pasado primero se recorren las fotos ya tomadas.
  *
  * <p>Si se pide un instante anterior a la foto más antigua del historial, la sesión vuelve a
- * simular desde t = 0 con la misma máquina y la misma carga: la simulación es determinista y en
- * esta sesión no hay acciones manuales, así que se obtiene exactamente la misma foto.
+ * simular desde t = 0 con la misma máquina y la misma carga, y repite los ingresos de procesos
+ * en los mismos instantes ({@link #ingresos()}): la simulación es determinista, así que se
+ * obtiene exactamente la misma foto.
  *
  * <p>No depende de JavaFX: la interfaz solo llama a estos métodos y se suscribe con
  * {@link #alCambiar(Consumer)}.
@@ -44,6 +47,24 @@ public class SesionSimulacion {
     private final List<Integer> finesQuantum = new ArrayList<>(List.of(0));
     private int capacidadHistorial = Kernel.CAPACIDAD_HISTORIAL;
 
+    /** Cuántos procesos se pueden generar de una vez con «Generar N». */
+    public static final int MAX_GENERAR = 1_000;
+
+    /** [P14][P18] Quién ingresa procesos con la simulación en curso. */
+    public enum Origen { USUARIO, SO }
+
+    /**
+     * [P14][P18] Un ingreso hecho con la simulación en curso, en el instante {@code t}: un proceso
+     * manual (origen USUARIO, con su llegada, ráfaga, ejecutable y prioridad) o {@code cantidad}
+     * procesos aleatorios (origen SO, desde {@code llegada}). Se guarda para repetirlo al re-simular.
+     */
+    public record Ingreso(int t, Origen origen, int llegada, int burst, long texto, int prioridad, int cantidad) {}
+
+    private final List<Ingreso> ingresos = new ArrayList<>();
+    private int aplicados;                                      // ingresos ya hechos en el kernel actual
+    private CreadorProcesos creador;                            // crea los procesos de los ingresos
+    private int pidBase;                                        // el mayor PID de la carga inicial
+
     /** Sesión con el lote oficial de 20 procesos, en páginas del tamaño de la máquina. */
     public SesionSimulacion(Maquina maquina) {
         this(maquina, () -> CreadorProcesos.loteOficial(maquina.configuracion().pagina().bytes));
@@ -65,9 +86,18 @@ public class SesionSimulacion {
     private Kernel crearKernel() {
         finesQuantum.clear();                                       // el acumulado se rehace al simular de nuevo
         finesQuantum.add(0);
-        Kernel k = maquina.configuracion().crearKernel(carga.get());
+        List<Pcb> procesos = carga.get();
+        Kernel k = maquina.configuracion().crearKernel(procesos);
         k.limitarHistorial(capacidadHistorial);
+        pidBase = procesos.stream().mapToInt(p -> p.pid).max().orElse(0);
+        creador = nuevoCreador();
+        aplicados = 0;
         return k;
+    }
+
+    /** Los PID de los ingresos siguen a los de la carga; la semilla es la de la máquina. */
+    private CreadorProcesos nuevoCreador() {
+        return new CreadorProcesos(maquina.configuracion().semilla(), maquina.configuracion().pagina().bytes, pidBase + 1);
     }
 
     /**
@@ -122,6 +152,15 @@ public class SesionSimulacion {
         return finesQuantum.get(Math.min(t, finesQuantum.size() - 1));
     }
 
+    /** [P14][P18] Ingresos hechos en esta sesión, en orden (se repiten al volver a simular). */
+    public List<Ingreso> ingresos() { return Collections.unmodifiableList(ingresos); }
+
+    /**
+     * ¿Se pueden ingresar procesos ahora? Solo desde el instante simulado: ingresar en una foto
+     * pasada cambiaría lo que ya ocurrió después.
+     */
+    public boolean puedeIngresar() { return enVivo(); }
+
     /** ¿Se puede avanzar desde la foto mirada? */
     public boolean puedeAvanzar() { return !enVivo() || (!terminada() && !atascada); }
 
@@ -172,6 +211,7 @@ public class SesionSimulacion {
             if (guardada.isPresent()) vista = guardada.get();
             else {                                           // más antigua que el historial: re-simular
                 kernel = crearKernel();
+                aplicarPendientes();                         // los ingresos hechos en t = 0
                 atascada = false;
                 ticksSinProgreso = 0;
                 while (kernel.t() < t && !atascada) simularUnTick();
@@ -181,6 +221,79 @@ public class SesionSimulacion {
         avisar();
     }
 
+    // ---------------------------------------------------------------- ingreso de procesos (P14, P18)
+
+    /**
+     * [P18] Ingreso manual con la simulación en curso: el proceso aparece en «Ingresado por
+     * usuario» y entra al sistema en su instante de llegada (≥ el instante simulado).
+     *
+     * @return el PID asignado
+     */
+    public int ingresarManual(int llegada, int burst, long texto, int prioridad) {
+        return ingresar(new Ingreso(kernel.t(), Origen.USUARIO, llegada, burst, texto, prioridad, 1)).get(0);
+    }
+
+    /**
+     * [P14] «Generar N» con la simulación en curso: N procesos aleatorios (ecuación 8) que crea el
+     * SO y que llegan como un proceso de Poisson desde el tick siguiente.
+     *
+     * @return los PID asignados
+     */
+    public List<Integer> generar(int n) {
+        if (n < 1 || n > MAX_GENERAR)
+            throw new ParametroInvalidoException("Se generan entre 1 y " + MAX_GENERAR + " procesos (" + n + ")");
+        return ingresar(new Ingreso(kernel.t(), Origen.SO, kernel.t() + 1, 0, 0, 0, n));
+    }
+
+    private List<Integer> ingresar(Ingreso ingreso) {
+        if (!puedeIngresar())
+            throw new EventoInvalidoException("Para ingresar procesos vuelve al instante simulado (t = " + kernel.t() + ")");
+        if (ingreso.llegada() < kernel.t())
+            throw new ParametroInvalidoException("La llegada debe ser ≥ " + kernel.t() + ", el instante actual (" + ingreso.llegada() + ")");
+        List<Pcb> nuevos;
+        try {
+            nuevos = crear(ingreso);
+            List<Pcb> todos = new ArrayList<>(kernel.procesos());
+            todos.addAll(nuevos);
+            List<String> errores = maquina.configuracion().problemas(todos);
+            if (!errores.isEmpty()) throw new ParametroInvalidoException(String.join("; ", errores));
+        } catch (RuntimeException e) {
+            reconstruirCreador();                               // el creador vuelve a como estaba
+            throw e;
+        }
+        ingresos.subList(aplicados, ingresos.size()).clear();  // lo no repetido aún era otro futuro: se descarta
+        ingresos.add(ingreso);
+        aplicados++;
+        kernel.ingresar(nuevos);
+        maximoAlcanzado = kernel.t();                           // el futuro cambia: la línea llega hasta aquí
+        atascada = false;
+        ticksSinProgreso = 0;
+        vista = kernel.instantanea();
+        avisar();
+        return nuevos.stream().map(p -> p.pid).toList();
+    }
+
+    private List<Pcb> crear(Ingreso i) {
+        if (i.origen() == Origen.SO) return creador.aleatorios(i.cantidad(), i.llegada());
+        Pcb p = creador.crear(i.llegada(), i.burst(), i.texto(), CreadorProcesos.DATOS_MANUAL, CreadorProcesos.HEAP_MANUAL, i.prioridad());
+        p.marcarIngresadoPorUsuario();
+        return List.of(p);
+    }
+
+    /** Rehace el creador repitiendo los ingresos ya aplicados (sin tocar el kernel). */
+    private void reconstruirCreador() {
+        creador = nuevoCreador();
+        for (int i = 0; i < aplicados; i++) crear(ingresos.get(i));
+    }
+
+    /** Repite los ingresos que tocan hasta el instante del kernel (al volver a simular). */
+    private void aplicarPendientes() {
+        while (aplicados < ingresos.size() && ingresos.get(aplicados).t() <= kernel.t()) {
+            kernel.ingresar(crear(ingresos.get(aplicados)));
+            aplicados++;
+        }
+    }
+
     /** Simula hasta que todos terminen (o la simulación se atasque) y muestra la última foto. */
     public void hastaElFinal() {
         vista = kernel.instantanea();
@@ -188,8 +301,9 @@ public class SesionSimulacion {
         avisar();
     }
 
-    /** Vuelve a t = 0 con la misma máquina y una carga nueva igual a la original. */
+    /** Vuelve a t = 0 con la misma máquina y una carga nueva igual a la original (sin los ingresos). */
     public void reiniciar() {
+        ingresos.clear();
         kernel = crearKernel();
         atascada = false;
         ticksSinProgreso = 0;
@@ -204,6 +318,7 @@ public class SesionSimulacion {
             return;
         }
         kernel.paso();
+        aplicarPendientes();                                    // los ingresos hechos en este instante
         vista = kernel.instantanea();
         maximoAlcanzado = Math.max(maximoAlcanzado, kernel.t());
         long fines = vista.procesos().stream().filter(p -> p.tiene(Instantanea.Insignia.FIN_QUANTUM)).count();
