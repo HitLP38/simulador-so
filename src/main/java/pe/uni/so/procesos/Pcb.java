@@ -40,6 +40,7 @@ public class Pcb {
     private int quantumRestante;
     private Dispositivo dispositivo;  // [P3] dispositivo por el que espera; null si no espera E/S
     private boolean suspendido;      // [P5] en swap: atributo de Listo o Bloqueado, no un sexto estado
+    private boolean ingresadoPorUsuario;   // [P18] lo ingresó el usuario (no lo creó el SO)
 
     public Pcb(int pid, int llegada, int burst, int prioridad, int memoria) {
         if (burst <= 0 || burst > BURST_MAXIMO)
@@ -53,6 +54,12 @@ public class Pcb {
     public Pcb(int pid, int llegada, int burst, int prioridad) { this(pid, llegada, burst, prioridad, 0); }
 
     public Pcb(int pid, int llegada, int burst) { this(pid, llegada, burst, 0); }
+
+    /** [P18] Marca el proceso como ingresado por el usuario (la arena lo hace entrar por esa sala). */
+    public void marcarIngresadoPorUsuario() { ingresadoPorUsuario = true; }
+
+    /** [P18] ¿Lo ingresó el usuario? Si no, lo creó el SO (lote oficial o carga aleatoria). */
+    public boolean ingresadoPorUsuario() { return ingresadoPorUsuario; }
 
     /** Única puerta para cambiar de estado: rechaza lo que el modelo no permite. */
     public void pasarA(Estado destino) {

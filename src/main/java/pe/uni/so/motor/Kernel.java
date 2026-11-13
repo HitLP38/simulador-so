@@ -2,6 +2,7 @@ package pe.uni.so.motor;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -128,7 +129,7 @@ public class Kernel {
         this.instruccionesPorTick = instruccionesPorTick;
         this.politica = politica;
         this.largoPlazo = largoPlazo;
-        this.procesos = List.copyOf(procesos);
+        this.procesos = new ArrayList<>(List.copyOf(procesos));   // [P18] crece con los ingresos en plena corrida
         this.porLlegar = new ArrayList<>(procesos);
         porLlegar.sort(Comparator.comparingInt(p -> p.llegada));   // estable: respeta el orden de ingreso
         if (largoPlazo != null && largoPlazo.gestor() != null && largoPlazo.gestor().bajoDemanda()) {
@@ -142,6 +143,48 @@ public class Kernel {
     }
 
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos) { this(politica, procesos, null); }
+
+    /**
+     * [P14][P18] Ingresa procesos con la simulación en curso, entre dos ticks. Entran a la cola
+     * de llegadas en orden de llegada (tras los que llegan al mismo instante) y los admite el
+     * momento d como a cualquier otro. Bajo demanda reciben su cuota con
+     * {@link GestorMemoria#agregarCuota}. La foto del instante actual se actualiza para que ya
+     * aparezcan (en Nuevo), sin cambiar sus sucesos.
+     *
+     * <p>No sale de la semilla: para volver a ver un tick anterior hay que repetir el ingreso en el
+     * mismo instante (lo hace {@code SesionSimulacion}).
+     */
+    public void ingresar(List<Pcb> nuevos) {
+        if (nuevos == null || nuevos.isEmpty()) throw new ParametroInvalidoException("No hay procesos para ingresar");
+        Set<Integer> pids = new HashSet<>();
+        for (Pcb p : procesos) pids.add(p.pid);
+        for (Pcb p : nuevos) {
+            if (p == null) throw new ParametroInvalidoException("Falta un proceso para ingresar");
+            if (!pids.add(p.pid)) throw new ParametroInvalidoException("Ya existe un proceso con PID " + p.pid);
+            if (p.estado() != Estado.NUEVO) throw new ParametroInvalidoException(p + " ya fue admitido (" + p.estado() + ")");
+            if (p.llegada < t) throw new ParametroInvalidoException(p + " llegaría en t = " + p.llegada + ", antes del instante actual (" + t + ")");
+        }
+        GestorMemoria gm = gestorMemoriaOpcional();
+        for (Pcb p : nuevos) {
+            if (gm != null && gm.bajoDemanda()) gm.agregarCuota(p.pid, p.espacio());
+            procesos.add(p);
+            int i = porLlegar.size();
+            while (i > 0 && porLlegar.get(i - 1).llegada > p.llegada) i--;
+            porLlegar.add(i, p);
+        }
+        Instantanea f = ultima;
+        List<Instantanea.Proceso> fichas = new ArrayList<>(f.procesos());
+        for (Pcb p : nuevos) {
+            int cuota = gm != null && gm.tieneCuota(p.pid) ? gm.cuota(p.pid) : 0;
+            fichas.add(new Instantanea.Proceso(p.pid, p.llegada, p.burst, p.restante(), p.prioridad, p.estado(), p.estado(),
+                    ColorEstado.de(p.estado()), Set.of(), null, "", p.pc(), p.quantumRestante(), p.dispositivo(),
+                    p.espera(), p.cpu(), p.bloqueado(), p.pedidosES(), 0, cuota, p.error(), p.ingresadoPorUsuario()));
+        }
+        Instantanea actualizada = new Instantanea(f.t(), f.cpu(), f.nuevos(), f.listos(), fichas, f.dispositivos(), f.pic(),
+                f.memoria(), f.sucesos());
+        historial.set(historial.size() - 1, actualizada);
+        ultima = actualizada;
+    }
 
     /** Un tick: eventos del instante t, una decisión de planificación y una instrucción. */
     public void paso() {
@@ -416,7 +459,7 @@ public class Kernel {
         List<Instantanea.Proceso> fichas = new ArrayList<>();
         for (int i = 0; i < procesos.size(); i++) {
             Pcb p = procesos.get(i);
-            Estado anterior = ultima == null ? p.estado() : ultima.procesos().get(i).estado();
+            Estado anterior = ultima == null || i >= ultima.procesos().size() ? p.estado() : ultima.procesos().get(i).estado();
             Evento e = ultimoEvento.get(p.pid);
             Momento momento = e == null ? null : e.momento();
             String motivo = e == null ? "" : e.detalle();
@@ -433,7 +476,7 @@ public class Kernel {
             int cuota = gm != null && gm.tieneCuota(p.pid) ? gm.cuota(p.pid) : 0;
             fichas.add(new Instantanea.Proceso(p.pid, p.llegada, p.burst, p.restante(), p.prioridad, p.estado(), anterior,
                     ColorEstado.de(p.estado()), insignias, momento, motivo, p.pc(), p.quantumRestante(), p.dispositivo(),
-                    p.espera(), p.cpu(), p.bloqueado(), p.pedidosES(), marcos, cuota, p.error()));
+                    p.espera(), p.cpu(), p.bloqueado(), p.pedidosES(), marcos, cuota, p.error(), p.ingresadoPorUsuario()));
         }
 
         Pcb enCpu = colas.enCpu();
@@ -477,7 +520,7 @@ public class Kernel {
     public boolean terminado() { return procesos.stream().allMatch(p -> p.estado() == Estado.TERMINADO); }
     public int t() { return t; }
     public Colas colas() { return colas; }
-    public List<Pcb> procesos() { return procesos; }
+    public List<Pcb> procesos() { return Collections.unmodifiableList(procesos); }
     public List<Evento> bitacora() { return List.copyOf(bitacora); }
     public List<Evento> eventos(Momento m) { return bitacora.stream().filter(e -> e.momento() == m).toList(); }
     public String gantt() { return gantt.toString().trim(); }
