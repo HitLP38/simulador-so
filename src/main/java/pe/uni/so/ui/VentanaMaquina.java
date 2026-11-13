@@ -406,7 +406,8 @@ final class VentanaMaquina {
             if (!linea.isValueChanging()) irALinea(t);                // clic o teclado: salta ya
         });
         linea.valueChangingProperty().addListener((o, a, arrastrando) -> {
-            if (!arrastrando) irALinea((int) Math.round(linea.getValue()));   // al soltar: un solo salto
+            if (arrastrando) pausar();                                     // que la corrida no mueva la línea
+            else irALinea((int) Math.round(linea.getValue()));            // al soltar: un solo salto
         });
         instante.getStyleClass().add("instante");
         instante.setMinWidth(170);
@@ -576,6 +577,7 @@ final class VentanaMaquina {
     private void alternarReproduccion() {
         if (reproductor.reproduciendo()) pausar();
         else if (sesion.puedeAvanzar()) {
+            if (corriendoLotes) detenerLotes();                            // un solo temporizador avanza la sesión
             reproductor.reproducir();
             lienzo.velocidadReproduccion(reproductor.velocidad());
             ultimoCuadro = 0;
