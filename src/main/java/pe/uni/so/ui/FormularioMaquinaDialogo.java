@@ -52,7 +52,7 @@ final class FormularioMaquinaDialogo extends Dialog<Maquina> {
         setTitle(titulo);
         setHeaderText(null);
         setResizable(true);
-        getDialogPane().getStylesheets().add(App.estilos());
+        getDialogPane().getStylesheets().setAll(App.estilosActuales());
         getDialogPane().getStyleClass().add("formulario");
 
         ButtonType aceptarTipo = new ButtonType("Aceptar", ButtonBar.ButtonData.OK_DONE);

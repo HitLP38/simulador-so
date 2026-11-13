@@ -1,0 +1,82 @@
+/* Tema claro: se carga encima de estilos.css y solo cambia colores */
+.root {
+    -fx-background-color: #f1f5f9;
+    -fx-base: #e2e8f0;
+    -fx-control-inner-background: #ffffff;
+    -fx-accent: #0891b2;
+    -fx-focus-color: #0891b2;
+    -fx-faint-focus-color: #0891b222;
+}
+.label { -fx-text-fill: #1e293b; }
+.button { -fx-background-color: #ffffff; -fx-text-fill: #1e293b; -fx-border-color: #cbd5e1; }
+.button:hover { -fx-background-color: #f1f5f9; }
+.boton-primario, .boton-primario:hover { -fx-background-color: #0891b2; -fx-text-fill: #ffffff; -fx-border-color: transparent; }
+.boton-peligro { -fx-text-fill: #b91c1c; -fx-border-color: #fecaca; }
+.salida, .salida .content { -fx-control-inner-background: #ffffff; -fx-text-fill: #0f172a; }
+
+.titulo, .titulo-detalle { -fx-text-fill: #0f172a; }
+.subtitulo, .nota, .etiqueta-campo { -fx-text-fill: #64748b; }
+.estado, .barra-estado .estado { -fx-text-fill: #64748b; }
+.valor-campo, .dato-calculado, .nombre-maquina { -fx-text-fill: #0f172a; }
+.resumen-maquina { -fx-text-fill: #64748b; }
+.titulo-tarjeta, .grupo-propiedad, .seccion > .title > .text { -fx-text-fill: #0e7490; -fx-fill: #0e7490; }
+
+.lista-maquinas { -fx-background-color: #ffffff; -fx-border-color: #e2e8f0; }
+.lista-maquinas .list-cell:filled:hover { -fx-background-color: #f1f5f9; }
+.lista-maquinas .list-cell:filled:selected { -fx-background-color: #cffafe; }
+.insignia-defecto { -fx-background-color: #e2e8f0; -fx-text-fill: #1e293b; }
+.insignia-abierta { -fx-background-color: #dcfce7; -fx-text-fill: #166534; }
+.tarjeta { -fx-background-color: #ffffff; -fx-border-color: #e2e8f0; }
+
+.caja-avisos { -fx-background-color: #fef3c7; }
+.caja-errores { -fx-background-color: #fee2e2; }
+.aviso { -fx-text-fill: #92400e; }
+.error { -fx-text-fill: #b91c1c; }
+
+.titled-pane > .title { -fx-background-color: #ffffff; }
+.titled-pane > .title > .text { -fx-fill: #1e293b; }
+.titled-pane > .content { -fx-background-color: #f8fafc; -fx-border-color: #e2e8f0; }
+.dialog-pane { -fx-background-color: #f8fafc; }
+.dialog-pane > .content.label { -fx-text-fill: #1e293b; }
+.dialog-pane .header-panel { -fx-background-color: #ffffff; }
+.dialog-pane .header-panel .label { -fx-text-fill: #0f172a; }
+
+/* Espacio de trabajo */
+.menu-superior, .barra-herramientas, .pie, .panel-lateral { -fx-background-color: #ffffff; -fx-border-color: #e2e8f0; }
+.menu-superior .menu .label, .nombre-cabecera { -fx-text-fill: #0f172a; }
+.split-pane { -fx-background-color: #f1f5f9; }
+.split-pane > .split-pane-divider { -fx-background-color: #e2e8f0; }
+.titulo-panel { -fx-text-fill: #64748b; }
+.explorador, .explorador .tree-cell { -fx-background-color: #ffffff; -fx-text-fill: #1e293b; }
+.explorador .tree-cell:selected { -fx-background-color: #cffafe; }
+.explorador .tree-cell .tree-disclosure-node .arrow { -fx-background-color: #64748b; }
+.lienzo { -fx-background-color: #f1f5f9; }
+.instante { -fx-text-fill: #0f172a; }
+.leyenda-item { -fx-text-fill: #334155; }
+.linea-tiempo .slider .track { -fx-background-color: #e2e8f0; }
+.linea-tiempo .slider .thumb { -fx-background-color: #0891b2; }
+.toggle-button { -fx-text-fill: #1e293b; }
+.context-menu, .menu-item { -fx-background-color: #ffffff; }
+.menu-item .label { -fx-text-fill: #1e293b; }
+
+/* Menús en tema claro: el ítem resaltado era oscuro con letra oscura */
+.menu-bar .menu .label { -fx-text-fill: #0f172a; }
+.menu-bar .menu:hover, .menu-bar .menu:showing { -fx-background-color: #e2e8f0; }
+.context-menu { -fx-background-color: #ffffff; -fx-border-color: #cbd5e1; }
+.menu-item:focused { -fx-background-color: #cffafe; }
+.menu-item:focused .label { -fx-text-fill: #0f172a; }
+.check-menu-item:checked .check { -fx-background-color: #0f172a; }
+.info-maquina { -fx-text-fill: #475569; }
+.pestanas-panel .tab-header-area .tab-header-background { -fx-background-color: #ffffff; }
+.pestanas-panel .tab { -fx-background-color: #f1f5f9; }
+.pestanas-panel .tab:selected { -fx-background-color: #cffafe; }
+.pestanas-panel .tab .tab-label { -fx-text-fill: #334155; }
+.pestanas-panel .tab:selected .tab-label { -fx-text-fill: #0f172a; }
+.pestanas-panel > .tab-content-area { -fx-background-color: #ffffff; }
+.tabla-pcb { -fx-background-color: #ffffff; }
+.tabla-pcb .column-header-background, .tabla-pcb .column-header, .tabla-pcb .filler { -fx-background-color: #f1f5f9; }
+.tabla-pcb .column-header .label { -fx-text-fill: #475569; }
+.tabla-pcb .table-row-cell { -fx-background-color: #ffffff; }
+.tabla-pcb .table-row-cell:odd { -fx-background-color: #f8fafc; }
+.tabla-pcb .table-row-cell:selected { -fx-background-color: #cffafe; }
+.tabla-pcb .table-cell { -fx-text-fill: #1e293b; }
