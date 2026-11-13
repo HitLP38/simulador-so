@@ -76,7 +76,7 @@ final class GestorMaquinasVista {
         titulo.getStyleClass().add("titulo");
         Region hueco = new Region();
         HBox.setHgrow(hueco, Priority.ALWAYS);
-        HBox barra = new HBox(8, titulo, hueco, nueva, configurar, clonar, eliminar, iniciar);
+        HBox barra = new HBox(8, titulo, hueco, nueva, configurar, clonar, eliminar, iniciar, App.botonTema());
         barra.getStyleClass().add("barra");
 
         lista.getStyleClass().add("lista-maquinas");
@@ -120,8 +120,9 @@ final class GestorMaquinasVista {
         BorderPane raiz = new BorderPane(centro, barra, null, abajo, lista);
         raiz.setPadding(new Insets(16));
 
-        Scene escena = new Scene(raiz, 1100, 680);
-        escena.getStylesheets().add(App.estilos());
+        double[] tam = App.tamanoQueCabe(1100, 680);
+        Scene escena = new Scene(raiz, tam[0], tam[1]);
+        App.aplicarTema(escena);
         ventana.setTitle("Gestor de máquinas — Simulador SO (SW407)");
         ventana.setScene(escena);
         ventana.setOnCloseRequest(e -> {
@@ -163,7 +164,7 @@ final class GestorMaquinasVista {
         d.initOwner(ventana);
         d.setTitle("Clonar «" + origen.nombre() + "»");
         d.setHeaderText("Nombre de la copia (misma configuración)");
-        d.getDialogPane().getStylesheets().add(App.estilos());
+        d.getDialogPane().getStylesheets().setAll(App.estilosActuales());
         Label error = new Label();
         error.getStyleClass().add("error");
         Node ok = d.getDialogPane().lookupButton(ButtonType.OK);
@@ -313,7 +314,7 @@ final class GestorMaquinasVista {
             a.getDialogPane().setContent(texto);
             a.initOwner(ventana);
             a.setHeaderText("No se pudo completar la acción");
-            a.getDialogPane().getStylesheets().add(App.estilos());
+            a.getDialogPane().getStylesheets().setAll(App.estilosActuales());
             a.showAndWait();
             Maquina m = elegida();
             recargar(m == null ? null : m.nombre());
@@ -326,7 +327,7 @@ final class GestorMaquinasVista {
         a.initOwner(ventana);
         a.setTitle(titulo);
         a.setHeaderText(titulo);
-        a.getDialogPane().getStylesheets().add(App.estilos());
+        a.getDialogPane().getStylesheets().setAll(App.estilosActuales());
         return a.showAndWait().filter(b -> b == si).isPresent();
     }
 
