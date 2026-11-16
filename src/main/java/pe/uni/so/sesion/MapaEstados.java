@@ -59,10 +59,13 @@ public final class MapaEstados {
             this.modulo = modulo;
         }
 
+        /** ¿Es una de las dos salas de origen (fichas en miniatura)? */
+        public boolean origen() { return this == ORIGEN_SO || this == ORIGEN_USUARIO; }
+
         /** Sala donde reside un proceso en el instante t (los que aún no llegan esperan en su origen). */
         public static Sala de(Instantanea.Proceso p, int t) {
             return switch (p.estado()) {
-                case NUEVO -> p.llegada() > t ? ORIGEN_SO : CREACION;
+                case NUEVO -> p.llegada() > t ? (p.usuario() ? ORIGEN_USUARIO : ORIGEN_SO) : CREACION;
                 case LISTO -> LISTOS;
                 case EJECUTANDO -> CPU;
                 case BLOQUEADO -> ES;
@@ -164,8 +167,8 @@ public final class MapaEstados {
      */
     public record Ficha(int pid, Estado estado, Sala sala, String color, boolean cambio, Set<Instantanea.Insignia> insignias,
                         int prioridad, int restante, boolean siguiente, boolean exceso, Punto destino) {
-        public double ancho() { return sala == Sala.CPU ? FICHA_CPU_ANCHO : sala == Sala.ORIGEN_SO ? FICHA_MINI_ANCHO : FICHA_ANCHO; }
-        public double alto() { return sala == Sala.CPU ? FICHA_CPU_ALTO : sala == Sala.ORIGEN_SO ? FICHA_MINI_ALTO : FICHA_ALTO; }
+        public double ancho() { return sala == Sala.CPU ? FICHA_CPU_ANCHO : sala.origen() ? FICHA_MINI_ANCHO : FICHA_ANCHO; }
+        public double alto() { return sala == Sala.CPU ? FICHA_CPU_ALTO : sala.origen() ? FICHA_MINI_ALTO : FICHA_ALTO; }
     }
 
     /** Datos de la CPU y de los módulos para rotular sus salas. */
@@ -229,6 +232,8 @@ public final class MapaEstados {
         Comparator<Instantanea.Proceso> porLlegada = Comparator.comparingInt(Instantanea.Proceso::llegada)
                 .thenComparingInt(Instantanea.Proceso::pid);
         rejilla(lista(foto, p -> Sala.de(p, t) == Sala.ORIGEN_SO, porLlegada), Sala.ORIGEN_SO, 4,
+                FICHA_MINI_ALTO, 4, -1, fichas, excesos);
+        rejilla(lista(foto, p -> Sala.de(p, t) == Sala.ORIGEN_USUARIO, porLlegada), Sala.ORIGEN_USUARIO, 4,
                 FICHA_MINI_ALTO, 4, -1, fichas, excesos);
         rejilla(ordenar(lista(foto, p -> Sala.de(p, t) == Sala.CREACION, porLlegada), foto.nuevos()), Sala.CREACION, 2,
                 FICHA_ALTO, SEPARACION_FILAS, -1, fichas, excesos);

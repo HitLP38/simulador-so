@@ -80,7 +80,7 @@ public record Instantanea(int t, Cpu cpu, List<Integer> nuevos, List<Integer> li
     public record Proceso(int pid, int llegada, int burst, int restante, int prioridad, Estado estado, Estado anterior,
                           String color, Set<Insignia> insignias, Momento momento, String motivo, int pc,
                           int quantumRestante, Dispositivo dispositivo, int espera, int cpu, int bloqueado,
-                          int pedidosES, int marcos, int cuota, CodigoError error) {
+                          int pedidosES, int marcos, int cuota, CodigoError error, boolean usuario) {
         public Proceso { insignias = Set.copyOf(insignias); }
 
         /** ¿Cambió de estado en este tick? (lo que la vista anima) */

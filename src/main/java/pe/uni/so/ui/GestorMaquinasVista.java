@@ -36,6 +36,7 @@ import pe.uni.so.configuracion.FormularioMaquina;
 import pe.uni.so.configuracion.GestorMaquinas;
 import pe.uni.so.configuracion.Maquina;
 import pe.uni.so.excepciones.SimuladorException;
+import pe.uni.so.sesion.PlanCarga;
 
 /**
  * [G5] Gestor de máquinas, la primera ventana de la app (al estilo de VirtualBox): a la izquierda
@@ -212,14 +213,16 @@ final class GestorMaquinasVista {
         }
         try {
             intentar(() -> {
-                Stage s = VentanaMaquina.crear(m);
-            ventanas.put(m.nombre(), s);
-            s.setOnHidden(e -> {
-                ventanas.remove(m.nombre());
-                gestor.cerrar(m.nombre());
-                actualizarBotones();
-                lista.refresh();
-            });
+                Optional<PlanCarga> plan = new CargaDialogo(ventana, m).showAndWait();   // [P14][P17][P18] ventana de carga
+                if (plan.isEmpty()) return;                                             // cancelada: la máquina queda cerrada
+                Stage s = VentanaMaquina.crear(m, plan.get());
+                ventanas.put(m.nombre(), s);
+                s.setOnHidden(e -> {
+                    ventanas.remove(m.nombre());
+                    gestor.cerrar(m.nombre());
+                    actualizarBotones();
+                    lista.refresh();
+                });
                 s.show();
                 actualizarBotones();
                 lista.refresh();

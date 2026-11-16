@@ -59,6 +59,7 @@ public class GestorMemoria {
     private final Map<Integer, Crecimiento> suspendidos = new LinkedHashMap<>();
     private final Reemplazo reemplazo;                    // null: carga total al admitir
     private final Map<Integer, Integer> cuotas = new HashMap<>();
+    private final Map<Integer, Integer> paginasDe = new HashMap<>();   // [P18] páginas de cada proceso con cuota (para S)
     private long comparaciones;
     private int fallosPagina;
 
@@ -100,7 +101,28 @@ public class GestorMemoria {
         }
         int[] f = PoliticaFisica.cuotas(paginas, mapa.total());
         cuotas.clear();
-        for (int i = 0; i < f.length; i++) cuotas.put(pids.get(i), Math.min(f[i], paginas[i]));
+        paginasDe.clear();
+        for (int i = 0; i < f.length; i++) {
+            cuotas.put(pids.get(i), Math.min(f[i], paginas[i]));
+            paginasDe.put(pids.get(i), paginas[i]);
+        }
+    }
+
+    /**
+     * [M7][P18] Cuota de un proceso que entra con la simulación en curso. Sigue la misma regla
+     * fᵢ = ⌊(sᵢ / S)·m⌋ (mínimo 1), con S = páginas de los procesos que ya tienen cuota más las
+     * suyas. Las cuotas ya repartidas no cambian: los residentes conservan sus marcos y, si no
+     * hay marcos libres para la nueva cuota, el proceso espera en Nuevo como cualquier otro.
+     */
+    public void agregarCuota(int pid, EspacioProceso e) {
+        if (!bajoDemanda()) throw new EventoInvalidoException("Las cuotas solo se usan con paginación bajo demanda");
+        if (e == null) throw new EventoInvalidoException("P" + pid + " no tiene espacio de proceso");
+        if (cuotas.containsKey(pid)) throw new EventoInvalidoException("P" + pid + " ya tiene cuota de marcos");
+        long total = e.paginasTotales();
+        for (int pidConCuota : cuotas.keySet()) total += paginasDe.getOrDefault(pidConCuota, 0);
+        int f = (int) Math.max(1, e.paginasTotales() * (long) mapa.total() / total);
+        cuotas.put(pid, Math.min(f, e.paginasTotales()));
+        paginasDe.put(pid, e.paginasTotales());
     }
 
     /** [M7] Marcos asignados al proceso por la política proporcional. */
