@@ -20,6 +20,7 @@ import pe.uni.so.memoria.Reemplazo;
 import pe.uni.so.motor.Instantanea;
 import pe.uni.so.motor.Kernel;
 import pe.uni.so.planificacion.Fcfs;
+import pe.uni.so.procesos.CreadorProcesos;
 import pe.uni.so.procesos.Estado;
 import pe.uni.so.procesos.Pcb;
 import pe.uni.so.sesion.MapaEstados;
@@ -257,5 +258,35 @@ class IngresoProcesosTest {
         assertEquals(1000, visibles);
         assertTrue(d.sala(Sala.ORIGEN_SO).exceso() > 0);
         assertTrue(ocultos > 0);
+    }
+
+    private static Configuracion bajoDemanda(Configuracion.Ram ram, Configuracion.Pagina pagina) {
+        Configuracion d = Configuracion.porDefecto();
+        return new Configuracion(ram, pagina, d.cpu(), d.politica(), d.quantum(), d.costoDespacho(), d.grado(),
+                d.estrategia(), Configuracion.Carga.BAJO_DEMANDA, d.reemplazo(), d.dispositivos(), d.semilla());
+    }
+
+    @Test @DisplayName("[M7][P18] Bajo demanda, un lote con un proceso sin espacio se rechaza entero: no deja cuotas ni procesos a medias")
+    void loteInvalidoNoCambiaNada() {
+        Configuracion c = bajoDemanda(Configuracion.Ram.GIB_1, Configuracion.porDefecto().pagina());
+        Kernel k = c.crearKernel(PlanCarga.loteOficial().procesos(c.pagina().bytes));
+        k.paso();
+        Pcb valido = new CreadorProcesos(1, c.pagina().bytes, 21).crear(5, 20, 300 * KIB,
+                CreadorProcesos.DATOS_MANUAL, CreadorProcesos.HEAP_MANUAL, 3);
+        assertThrows(ParametroInvalidoException.class, () -> k.ingresar(List.of(valido, new Pcb(22, 5, 20))));
+        assertEquals(20, k.procesos().size());
+        assertEquals(20, k.instantanea().procesos().size());
+        k.ingresar(List.of(valido));                                     // sin cuota previa: ahora sí entra
+        assertEquals(21, k.procesos().size());
+    }
+
+    @Test @DisplayName("[M7][P18] Bajo demanda, los procesos terminados no cuentan para «al menos 1 marco por proceso»")
+    void terminadosNoCuentan() {
+        Configuracion c = bajoDemanda(Configuracion.Ram.MIB_128, Configuracion.Pagina.MIB_2);   // 64 marcos
+        SesionSimulacion s = new SesionSimulacion(new Maquina("Pequeña", c));
+        s.hastaElFinal();
+        assertTrue(s.terminada());
+        assertEquals(50, s.generar(50).size());                           // 20 terminados + 50 > 64, pero solo 50 activos
+        assertThrows(ParametroInvalidoException.class, () -> s.generar(15));   // 50 activos + 15 > 64
     }
 }

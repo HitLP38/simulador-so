@@ -12,6 +12,7 @@ import javafx.scene.control.TextFormatter;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
+import javafx.util.StringConverter;
 import pe.uni.so.procesos.CreadorProcesos;
 import pe.uni.so.sesion.PlanCarga;
 import pe.uni.so.sesion.SesionSimulacion;
@@ -80,10 +81,25 @@ final class IngresoDialogo {
 
     /** Spinner editable que solo acepta dígitos. */
     static Spinner<Integer> spinner(int min, int max, int inicial) {
-        Spinner<Integer> s = new Spinner<>(new SpinnerValueFactory.IntegerSpinnerValueFactory(min, max, Math.max(min, Math.min(max, inicial))));
+        SpinnerValueFactory.IntegerSpinnerValueFactory f =
+                new SpinnerValueFactory.IntegerSpinnerValueFactory(min, max, Math.max(min, Math.min(max, inicial)));
+        f.setConverter(new StringConverter<>() {                // texto vacío o inválido: conserva el último valor válido
+            @Override public String toString(Integer v) { return v == null ? "" : v.toString(); }
+            @Override public Integer fromString(String texto) {
+                Integer actual = f.getValue() == null ? f.getMin() : f.getValue();
+                if (texto == null || texto.isBlank()) return actual;
+                try {
+                    long v = Long.parseLong(texto.strip());
+                    return (int) Math.max(f.getMin(), Math.min(f.getMax(), v));
+                } catch (NumberFormatException e) {
+                    return actual;
+                }
+            }
+        });
+        Spinner<Integer> s = new Spinner<>(f);
         s.setEditable(true);
         s.getEditor().setTextFormatter(new TextFormatter<String>(c -> c.getControlNewText().matches("\\d{0,9}") ? c : null));
-        s.focusedProperty().addListener((o, a, f) -> { if (!f) valor(s); });
+        s.focusedProperty().addListener((o, a, enfocado) -> { if (!enfocado) valor(s); });
         s.setPrefWidth(140);
         return s;
     }
@@ -91,11 +107,8 @@ final class IngresoDialogo {
     /** Lleva al spinner lo escrito en su editor (acotado a su rango) y devuelve el valor. */
     static int valor(Spinner<Integer> s) {
         SpinnerValueFactory.IntegerSpinnerValueFactory f = (SpinnerValueFactory.IntegerSpinnerValueFactory) s.getValueFactory();
-        String texto = s.getEditor().getText();
-        if (texto != null && !texto.isBlank()) {
-            long v = Long.parseLong(texto.strip());
-            f.setValue((int) Math.max(f.getMin(), Math.min(f.getMax(), v)));
-        }
+        f.setValue(f.getConverter().fromString(s.getEditor().getText()));
+        if (f.getValue() == null) f.setValue(f.getMin());
         s.getEditor().setText(String.valueOf(f.getValue()));
         return f.getValue();
     }

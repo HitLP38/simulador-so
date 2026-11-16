@@ -156,17 +156,19 @@ public class Kernel {
      */
     public void ingresar(List<Pcb> nuevos) {
         if (nuevos == null || nuevos.isEmpty()) throw new ParametroInvalidoException("No hay procesos para ingresar");
+        GestorMemoria gm = gestorMemoriaOpcional();
+        boolean conCuotas = gm != null && gm.bajoDemanda();
         Set<Integer> pids = new HashSet<>();
         for (Pcb p : procesos) pids.add(p.pid);
-        for (Pcb p : nuevos) {
+        for (Pcb p : nuevos) {                                   // todo el lote se valida antes de cambiar nada
             if (p == null) throw new ParametroInvalidoException("Falta un proceso para ingresar");
             if (!pids.add(p.pid)) throw new ParametroInvalidoException("Ya existe un proceso con PID " + p.pid);
             if (p.estado() != Estado.NUEVO) throw new ParametroInvalidoException(p + " ya fue admitido (" + p.estado() + ")");
             if (p.llegada < t) throw new ParametroInvalidoException(p + " llegaría en t = " + p.llegada + ", antes del instante actual (" + t + ")");
+            if (conCuotas && p.espacio() == null) throw new ParametroInvalidoException(p + " no tiene espacio de proceso para su cuota de marcos");
         }
-        GestorMemoria gm = gestorMemoriaOpcional();
         for (Pcb p : nuevos) {
-            if (gm != null && gm.bajoDemanda()) gm.agregarCuota(p.pid, p.espacio());
+            if (conCuotas) gm.agregarCuota(p.pid, p.espacio());
             procesos.add(p);
             int i = porLlegar.size();
             while (i > 0 && porLlegar.get(i - 1).llegada > p.llegada) i--;

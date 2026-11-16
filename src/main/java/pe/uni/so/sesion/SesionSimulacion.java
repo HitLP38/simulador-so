@@ -253,7 +253,8 @@ public class SesionSimulacion {
         List<Pcb> nuevos;
         try {
             nuevos = crear(ingreso);
-            List<Pcb> todos = new ArrayList<>(kernel.procesos());
+            List<Pcb> todos = new ArrayList<>();                // los terminados ya no ocupan marcos ni cuentan
+            for (Pcb p : kernel.procesos()) if (p.estado() != Estado.TERMINADO) todos.add(p);
             todos.addAll(nuevos);
             List<String> errores = maquina.configuracion().problemas(todos);
             if (!errores.isEmpty()) throw new ParametroInvalidoException(String.join("; ", errores));

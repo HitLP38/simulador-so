@@ -17,6 +17,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -126,7 +127,15 @@ final class CargaDialogo extends Dialog<PlanCarga> {
         for (Spinner<Integer> s : List.of(llegada, burst, kib, prioridad)) s.setPrefWidth(92);
 
         TableView<PlanCarga.Fila> tabla = new TableView<>(filas);
-        tabla.getColumns().add(columna("PID", f -> filas.indexOf(f) + 1));
+        TableColumn<PlanCarga.Fila, Integer> pid = new TableColumn<>("PID");   // el PID es la posición de la fila
+        pid.setSortable(false);
+        pid.setCellFactory(c -> new TableCell<>() {
+            @Override protected void updateItem(Integer v, boolean vacia) {
+                super.updateItem(v, vacia);
+                setText(vacia || getIndex() < 0 || getIndex() >= filas.size() ? null : Integer.toString(getIndex() + 1));
+            }
+        });
+        tabla.getColumns().add(pid);
         tabla.getColumns().add(columna("Llegada", PlanCarga.Fila::llegada));
         tabla.getColumns().add(columna("Ráfaga", PlanCarga.Fila::burst));
         tabla.getColumns().add(columna("Ejecutable (KiB)", PlanCarga.Fila::kib));
@@ -178,7 +187,7 @@ final class CargaDialogo extends Dialog<PlanCarga> {
         try {
             PlanCarga p = switch (pestanas.getSelectionModel().getSelectedIndex()) {
                 case 1 -> PlanCarga.aleatoria(cantidadEscrita(), semillaEscrita());
-                case 2 -> PlanCarga.manual(new ArrayList<>(filas), semillaEscrita());
+                case 2 -> PlanCarga.manual(new ArrayList<>(filas), maquina.configuracion().semilla());   // el plan de E/S usa la semilla de la máquina
                 default -> PlanCarga.loteOficial();
             };
             List<Pcb> procesos = p.procesos(maquina.configuracion().pagina().bytes);
