@@ -59,5 +59,8 @@ public class TablaPaginas {
     /** Entrada de la página, o null si nunca se cargó. */
     public Entrada entrada(long pagina) { return entradas.get(pagina); }
 
+    /** [M4] Todas las entradas en orden de página (solo lectura; para la foto de la vista Memoria). */
+    public Map<Long, Entrada> entradas() { return java.util.Collections.unmodifiableMap(entradas); }
+
     public int paginasValidas() { return (int) entradas.values().stream().filter(Entrada::valida).count(); }
 }

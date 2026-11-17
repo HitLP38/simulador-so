@@ -1,13 +1,13 @@
 package pe.uni.so.sesion;
 
 /**
- * [G5][P16] Vistas del explorador del espacio de trabajo. La arena del kernel y «Procesos y Gantt» ya funcionan; las demás
+ * [G5][P16][M3] Vistas del explorador del espacio de trabajo. La arena del kernel, «Procesos y Gantt» y «Memoria» ya funcionan; las demás
  * se completan en los siguientes PR y, mientras tanto, el lienzo muestra un aviso.
  */
 public enum Vista {
     MAPA_ESTADOS("Arena del kernel", true),
     PROCESOS("Procesos y Gantt", true),
-    MEMORIA("Memoria", false),
+    MEMORIA("Memoria", true),
     ENTRADA_SALIDA("Entrada/salida", false),
     INTERRUPCIONES("Interrupciones", false);
 

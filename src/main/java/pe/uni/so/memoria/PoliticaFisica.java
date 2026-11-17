@@ -111,6 +111,9 @@ public class PoliticaFisica {
         return Collections.unmodifiableList(foto);
     }
 
+    /** [M7] Página que saldría con el próximo fallo (FIFO: la más antigua; LRU: la menos usada), o −1 si aún hay marcos libres. */
+    public long proximaVictima() { return ocupados < paginas.length ? -1 : paginas[victima()]; }
+
     public Reemplazo reemplazo() { return reemplazo; }
     public int cuota() { return paginas.length; }
     /** [P16] Marcos de la cuota que ya tienen una página. */

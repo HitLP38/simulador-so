@@ -49,6 +49,24 @@ public class GestorMemoria {
         Residente(EspacioProceso espacio, TablaPaginas tabla) { this.espacio = espacio; this.tabla = tabla; }
     }
 
+    /** [M3][P16] Marcos contiguos que ocupa un proceso (para la rejilla de la vista Memoria). */
+    public record BloqueMarcos(int marcoInicial, int marcos, int pid) {}
+
+    /**
+     * [M4][P16] Páginas consecutivas con los mismos bits y marcos consecutivos (una tabla de páginas
+     * comprimida para la foto). {@code marcoInicial} es −1 si las páginas no están en memoria (bit i).
+     */
+    public record TramoPaginas(long paginaInicial, int paginas, int marcoInicial, boolean valida, boolean referenciada,
+                               boolean modificada) {
+        public long paginaFinal() { return paginaInicial + paginas - 1; }
+
+        /** Marco de una página del tramo, o −1 si no está en memoria. */
+        public int marcoDe(long pagina) { return valida ? marcoInicial + (int) (pagina - paginaInicial) : -1; }
+    }
+
+    /** [M3] Base y límite de un segmento del espacio lógico. */
+    public record LimitesSegmento(EspacioProceso.Segmento segmento, long base, long limite) {}
+
     /** [M2][P5] Crecimiento del heap y la pila que se conserva mientras el proceso está suspendido. */
     private record Crecimiento(EspacioProceso espacio, int paginasHeap, int paginasPila, long heapUsado, long pilaUsada) {}
 
@@ -411,6 +429,62 @@ public class GestorMemoria {
     public Reemplazo reemplazo() { return reemplazo; }
     /** [M1] Fallos de página atendidos en toda la simulación. */
     public int fallosPagina() { return fallosPagina; }
+    /** [M3][P16] Marcos ocupados, en bloques contiguos por proceso y en orden de marco. */
+    public List<BloqueMarcos> ocupacion() {
+        List<BloqueMarcos> bloques = new ArrayList<>();
+        for (Map.Entry<Integer, Residente> e : residentes.entrySet())
+            for (Tramo tr : e.getValue().tramos) bloques.add(new BloqueMarcos(tr.marcoInicial(), tr.marcos(), e.getKey()));
+        bloques.sort(java.util.Comparator.comparingInt(BloqueMarcos::marcoInicial));
+        List<BloqueMarcos> unidos = new ArrayList<>();
+        for (BloqueMarcos b : bloques) {
+            int u = unidos.size() - 1;
+            if (u >= 0 && unidos.get(u).pid() == b.pid() && unidos.get(u).marcoInicial() + unidos.get(u).marcos() == b.marcoInicial())
+                unidos.set(u, new BloqueMarcos(unidos.get(u).marcoInicial(), unidos.get(u).marcos() + b.marcos(), b.pid()));
+            else unidos.add(b);
+        }
+        return List.copyOf(unidos);
+    }
+
+    /** [M4][P16] Tabla de páginas del proceso residente, comprimida en tramos (sin cruzar de un segmento a otro). */
+    public List<TramoPaginas> tablaComprimida(int pid) {
+        Residente res = exigir(pid);
+        List<TramoPaginas> r = new ArrayList<>();
+        TramoPaginas actual = null;
+        EspacioProceso.Segmento segActual = null;
+        for (Map.Entry<Long, TablaPaginas.Entrada> e : res.tabla.entradas().entrySet()) {
+            long p = e.getKey();
+            TablaPaginas.Entrada x = e.getValue();
+            int marco = x.valida() ? x.marco() : -1;
+            EspacioProceso.Segmento seg = res.espacio.segmentoDe(p * res.espacio.bloque());
+            if (actual != null && seg == segActual && actual.paginaFinal() + 1 == p && actual.valida() == x.valida()
+                    && actual.referenciada() == x.referenciada() && actual.modificada() == x.modificada()
+                    && (!x.valida() || actual.marcoInicial() + actual.paginas() == marco))
+                actual = new TramoPaginas(actual.paginaInicial(), actual.paginas() + 1, actual.marcoInicial(), x.valida(),
+                        x.referenciada(), x.modificada());
+            else {
+                if (actual != null) r.add(actual);
+                actual = new TramoPaginas(p, 1, marco, x.valida(), x.referenciada(), x.modificada());
+                segActual = seg;
+            }
+        }
+        if (actual != null) r.add(actual);
+        return List.copyOf(r);
+    }
+
+    /** [M3] Base y límite de cada segmento del proceso residente. */
+    public List<LimitesSegmento> segmentos(int pid) {
+        EspacioProceso e = exigir(pid).espacio;
+        List<LimitesSegmento> r = new ArrayList<>();
+        for (EspacioProceso.Segmento s : EspacioProceso.Segmento.values()) r.add(new LimitesSegmento(s, e.base(s), e.limite(s)));
+        return List.copyOf(r);
+    }
+
+    /** [M7] Página que saldría con el próximo fallo del proceso, o −1 (carga total o marcos libres en la cuota). */
+    public long proximaVictima(int pid) {
+        Residente r = exigir(pid);
+        return r.politica == null ? -1 : r.politica.proximaVictima();
+    }
+
     /** [M7] Marcos de la cuota del proceso con la página que tiene cada uno (null: libre). */
     public List<Long> marcosDe(int pid) {
         Residente r = exigir(pid);

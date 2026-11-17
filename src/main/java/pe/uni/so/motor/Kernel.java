@@ -496,9 +496,21 @@ public class Kernel {
 
         Instantanea.Pic foto = new Instantanea.Pic(pic.pendientes(), pic.enmascaradas(), pic.pilaEnServicio(), pic.atendidas());
         Instantanea.Memoria memoria = gm == null ? null : new Instantanea.Memoria(gm.mapa().total(), ultimaMuestra,
-                gm.estrategia().nombre(), gm.reemplazo(), gm.fallosPagina());
+                gm.estrategia().nombre(), gm.reemplazo(), gm.fallosPagina(), gm.mmu().bloque(), gm.ocupacion(), memoriaDeProcesos(gm));
         return new Instantanea(t, cpu, nuevos, colas.listos().stream().map(p -> p.pid).toList(), fichas, dispositivos,
                 foto, memoria, sucesos);
+    }
+
+    /** [M4][P16] Tabla de páginas, segmentos y cuota de cada proceso residente, para la foto. */
+    private Map<Integer, Instantanea.MemoriaProceso> memoriaDeProcesos(GestorMemoria gm) {
+        Map<Integer, Instantanea.MemoriaProceso> r = new HashMap<>();
+        for (Pcb p : procesos) {
+            if (!gm.residente(p.pid)) continue;
+            boolean cuota = gm.bajoDemanda() && gm.tieneCuota(p.pid);
+            r.put(p.pid, new Instantanea.MemoriaProceso(p.pid, gm.tablaComprimida(p.pid), gm.segmentos(p.pid),
+                    cuota ? gm.cuota(p.pid) : 0, cuota ? gm.marcosDe(p.pid) : List.of(), gm.proximaVictima(p.pid)));
+        }
+        return r;
     }
 
     private void guardar(Instantanea foto) {

@@ -143,8 +143,43 @@ public record Instantanea(int t, Cpu cpu, List<Integer> nuevos, List<Integer> li
      *
      * @param muestra    marcos libres y ocupados, huecos y fragmentación de este instante
      * @param reemplazo  política de reemplazo, o null si se carga todo el proceso al admitirlo
+     * @param bloque     tamaño de página y de marco, en bytes
+     * @param ocupacion  [M3] marcos ocupados en bloques contiguos con su proceso (los demás están libres)
+     * @param procesos   [M4] memoria de cada proceso residente, por PID
      */
-    public record Memoria(int marcos, GestorMemoria.Muestra muestra, String estrategia, Reemplazo reemplazo, int fallosPagina) {}
+    public record Memoria(int marcos, GestorMemoria.Muestra muestra, String estrategia, Reemplazo reemplazo, int fallosPagina,
+                          long bloque, List<GestorMemoria.BloqueMarcos> ocupacion, Map<Integer, MemoriaProceso> procesos) {
+        public Memoria {
+            ocupacion = List.copyOf(ocupacion);
+            procesos = Map.copyOf(procesos);
+        }
+
+        /** [M7] ¿Paginación bajo demanda (con reemplazo local)? */
+        public boolean bajoDemanda() { return reemplazo != null; }
+
+        /** Memoria del proceso residente, si lo está. */
+        public Optional<MemoriaProceso> de(int pid) { return Optional.ofNullable(procesos.get(pid)); }
+    }
+
+    /**
+     * [M3][M4][M7][P16] Memoria de un proceso residente en la foto: tabla de páginas comprimida,
+     * límites de sus segmentos y, bajo demanda, su cuota, el contenido de cada marco local
+     * (null: libre) y la página que saldría con el próximo fallo (−1: aún hay marcos libres).
+     */
+    public record MemoriaProceso(int pid, List<GestorMemoria.TramoPaginas> tabla, List<GestorMemoria.LimitesSegmento> segmentos,
+                                 int cuota, List<Long> marcosLocales, long proximaVictima) {
+        public MemoriaProceso {
+            tabla = List.copyOf(tabla);
+            segmentos = List.copyOf(segmentos);
+            marcosLocales = marcosLocales == null ? List.of() : java.util.Collections.unmodifiableList(new java.util.ArrayList<>(marcosLocales));
+        }
+
+        /** Páginas en memoria (bit v). */
+        public int paginasValidas() { return tabla.stream().filter(GestorMemoria.TramoPaginas::valida).mapToInt(GestorMemoria.TramoPaginas::paginas).sum(); }
+
+        /** Páginas de su espacio virtual registradas en la tabla (v o i). */
+        public int paginasRegistradas() { return tabla.stream().mapToInt(GestorMemoria.TramoPaginas::paginas).sum(); }
+    }
 
     /** Un evento de la bitácora, sin referencias al PCB vivo. */
     public record Suceso(int t, Momento momento, int pid, String detalle) {
