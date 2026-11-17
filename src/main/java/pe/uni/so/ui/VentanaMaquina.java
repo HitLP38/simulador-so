@@ -660,7 +660,7 @@ final class VentanaMaquina {
         Object destino = e.getTarget();                                   // los controles usan sus propias teclas
         if (destino instanceof ComboBoxBase<?> || destino instanceof TextInputControl || destino instanceof Spinner<?>) return;
         if (destino instanceof ButtonBase && (e.getCode() == KeyCode.SPACE || e.getCode() == KeyCode.ENTER)) return;
-        if (destino instanceof TableView<?> && e.getCode().isArrowKey()) return;
+        if (destino instanceof TableView<?> && (e.getCode().isArrowKey() || e.getCode().isNavigationKey())) return;   // flechas, Inicio, Fin, RePág, AvPág
         switch (e.getCode()) {
             case SPACE -> alternarReproduccion();
             case RIGHT -> { if (!pasoAdelante.isDisabled()) accion(() -> sesion.avanzar(1)); }
