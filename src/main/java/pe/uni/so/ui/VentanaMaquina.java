@@ -17,7 +17,10 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ComboBoxBase;
+import javafx.scene.control.Spinner;
+import javafx.scene.control.TextInputControl;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
@@ -37,12 +40,14 @@ import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TreeView;
+import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
@@ -105,6 +110,8 @@ final class VentanaMaquina {
     private final Label estado = new Label();
     private final Label zoom = new Label();
     private final SplitPane centro = new SplitPane();
+    private final StackPane contenedorVista = new StackPane();     // la arena o la vista de la vista elegida
+    private final VistaProcesos vistaProcesos = new VistaProcesos(this::elegirProceso);
     private final Node panelExplorador, panelPropiedades;
     private final BooleanProperty verExplorador = new SimpleBooleanProperty(true), verPropiedades = new SimpleBooleanProperty(true);
     private int seleccionado = Instantanea.NINGUNO;
@@ -154,7 +161,8 @@ final class VentanaMaquina {
         raiz.setTop(barraHerramientas());                               // una sola línea: menús y todos los controles
         verExplorador.addListener((o, a, v) -> mostrarPanel(panelExplorador, true, v));
         verPropiedades.addListener((o, a, v) -> mostrarPanel(panelPropiedades, false, v));
-        centro.getItems().setAll(panelExplorador, lienzo, panelPropiedades);
+        contenedorVista.getChildren().setAll(lienzo);
+        centro.getItems().setAll(panelExplorador, contenedorVista, panelPropiedades);
         centro.setDividerPositions(0.18, 0.78);
         SplitPane.setResizableWithParent(panelExplorador, false);
         SplitPane.setResizableWithParent(panelPropiedades, false);
@@ -494,6 +502,7 @@ final class VentanaMaquina {
     private void mostrar(Instantanea foto) {
         sincronizarExplorador(foto);
         lienzo.mostrar(foto);
+        if (selectorVista.getValue() == Vista.PROCESOS) vistaProcesos.mostrar(sesion.registro(), foto);
         for (Instantanea.Proceso p : foto.procesos()) {
             TreeItem<Nodo> item = itemsProceso.get(p.pid());
             if (item != null && item.getGraphic() instanceof Circle c) c.setFill(Color.web(p.color()));
@@ -570,6 +579,7 @@ final class VentanaMaquina {
     private void elegirProceso(int pid) {
         seleccionado = pid;
         lienzo.seleccionar(pid);
+        vistaProcesos.seleccionar(pid);
         mostrarPropiedades(sesion.vista());
         if (!actualizandoTabla) {
             actualizandoTabla = true;
@@ -616,6 +626,10 @@ final class VentanaMaquina {
 
     private void elegirVista(Vista v) {
         lienzo.vista(v);
+        if (v == Vista.PROCESOS) {                                     // [P16] Gantt, bitácora y métricas
+            contenedorVista.getChildren().setAll(vistaProcesos);
+            vistaProcesos.mostrar(sesion.registro(), sesion.vista());
+        } else if (!contenedorVista.getChildren().contains(lienzo)) contenedorVista.getChildren().setAll(lienzo);
         if (v == Vista.MAPA_ESTADOS) lienzo.ajustar();
     }
 
@@ -643,7 +657,10 @@ final class VentanaMaquina {
     private void actualizarZoom() { zoom.setText(lienzo.camara().porcentaje() + " %"); }
 
     private void atajo(KeyEvent e) {
-        if (e.getTarget() instanceof ComboBoxBase<?>) return;              // las listas usan sus propias flechas
+        Object destino = e.getTarget();                                   // los controles usan sus propias teclas
+        if (destino instanceof ComboBoxBase<?> || destino instanceof TextInputControl || destino instanceof Spinner<?>) return;
+        if (destino instanceof ButtonBase && (e.getCode() == KeyCode.SPACE || e.getCode() == KeyCode.ENTER)) return;
+        if (destino instanceof TableView<?> && (e.getCode().isArrowKey() || e.getCode().isNavigationKey())) return;   // flechas, Inicio, Fin, RePág, AvPág
         switch (e.getCode()) {
             case SPACE -> alternarReproduccion();
             case RIGHT -> { if (!pasoAdelante.isDisabled()) accion(() -> sesion.avanzar(1)); }
