@@ -2,6 +2,7 @@ package pe.uni.so;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.EnumSet;
@@ -11,6 +12,7 @@ import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import pe.uni.so.configuracion.Maquina;
+import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.motor.Instantanea;
 import pe.uni.so.motor.Momento;
 import pe.uni.so.procesos.Estado;
@@ -141,5 +143,27 @@ class VistaProcesosTest {
         assertEquals(31, fila.barras().get(0).desde());
         s.hastaElFinal();
         assertTrue(s.registro().metricas(s.vista()).filas().stream().filter(x -> x.pid() == pid).findFirst().orElseThrow().terminado());
+    }
+
+    @Test @DisplayName("[P17][P16] Respuesta = primera instrucción en CPU − llegada; uso de CPU = ticks con ejecución / ticks transcurridos")
+    void respuestaYUsoReales() {
+        SesionSimulacion s = lote();
+        s.hastaElFinal();
+        int fin = s.vista().t();
+        RegistroProcesos.Metricas m = s.registro().metricas(s.vista());
+        java.util.Map<Integer, Integer> primera = new java.util.HashMap<>();
+        int ocupados = 0;
+        for (int t = 1; t <= fin; t++) {
+            s.irA(t);
+            int ejecuto = s.vista().cpu().ejecuto();
+            if (ejecuto != Instantanea.NINGUNO) { ocupados++; primera.putIfAbsent(ejecuto, t - 1); }
+        }
+        for (FilaMetricas x : m.filas()) assertEquals(primera.get(x.pid()) - x.llegada(), x.respuesta(), "P" + x.pid());
+        assertEquals(100.0 * ocupados / fin, m.usoCpu(), 1e-9);
+        s.irA(1);
+        RegistroProcesos.Metricas m1 = s.registro().metricas(s.vista());
+        assertEquals(s.vista().cpu().ejecuto() == Instantanea.NINGUNO ? 0.0 : 100.0, m1.usoCpu(), 1e-9);
+        Instantanea vieja = s.vista();
+        assertThrows(EventoInvalidoException.class, () -> s.registro().registrar(vieja));   // anterior a la última registrada
     }
 }

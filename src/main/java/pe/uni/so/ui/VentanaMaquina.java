@@ -17,7 +17,10 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ComboBoxBase;
+import javafx.scene.control.Spinner;
+import javafx.scene.control.TextInputControl;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
@@ -37,6 +40,7 @@ import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TreeView;
+import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
@@ -653,7 +657,10 @@ final class VentanaMaquina {
     private void actualizarZoom() { zoom.setText(lienzo.camara().porcentaje() + " %"); }
 
     private void atajo(KeyEvent e) {
-        if (e.getTarget() instanceof ComboBoxBase<?>) return;              // las listas usan sus propias flechas
+        Object destino = e.getTarget();                                   // los controles usan sus propias teclas
+        if (destino instanceof ComboBoxBase<?> || destino instanceof TextInputControl || destino instanceof Spinner<?>) return;
+        if (destino instanceof ButtonBase && (e.getCode() == KeyCode.SPACE || e.getCode() == KeyCode.ENTER)) return;
+        if (destino instanceof TableView<?> && e.getCode().isArrowKey()) return;
         switch (e.getCode()) {
             case SPACE -> alternarReproduccion();
             case RIGHT -> { if (!pasoAdelante.isDisabled()) accion(() -> sesion.avanzar(1)); }

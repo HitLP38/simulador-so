@@ -86,6 +86,7 @@ final class VistaProcesos extends SplitPane {
     private Instantanea foto;
     private DiagramaGantt gantt;
     private int seleccionado = Instantanea.NINGUNO;
+    private boolean actualizando;                                  // refresco de tablas: no es una elección del usuario
     private final ChangeListener<Boolean> oyenteTema = (o, a, v) -> dibujar();
 
     VistaProcesos(IntConsumer alElegir) {
@@ -143,7 +144,7 @@ final class VistaProcesos extends SplitPane {
         TableColumn<Instantanea.Suceso, String> detalle = columna("Detalle", Instantanea.Suceso::detalle, 520);
         tablaBitacora.getColumns().add(detalle);
         tablaBitacora.setPlaceholder(new Label("Sin sucesos hasta este instante"));
-        tablaBitacora.getSelectionModel().selectedItemProperty().addListener((o, a, s) -> { if (s != null) alElegir.accept(s.pid()); });
+        tablaBitacora.getSelectionModel().selectedItemProperty().addListener((o, a, s) -> { if (s != null && !actualizando) alElegir.accept(s.pid()); });
         conteo.getStyleClass().add("subtitulo");
         HBox filtros = new HBox(10, filtroMomento, soloElegido, conteo);
         filtros.setAlignment(Pos.CENTER_LEFT);
@@ -163,7 +164,7 @@ final class VistaProcesos extends SplitPane {
         tablaMetricas.getColumns().add(columnaM("CPU", x -> Integer.toString(x.cpu())));
         tablaMetricas.getColumns().add(columnaM("Bloqueado", x -> Integer.toString(x.bloqueado())));
         tablaMetricas.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        tablaMetricas.getSelectionModel().selectedItemProperty().addListener((o, a, x) -> { if (x != null) alElegir.accept(x.pid()); });
+        tablaMetricas.getSelectionModel().selectedItemProperty().addListener((o, a, x) -> { if (x != null && !actualizando) alElegir.accept(x.pid()); });
         promedios.getStyleClass().add("subtitulo");
         promedios.setPadding(new Insets(6, 8, 6, 8));
         promedios.setWrapText(true);
@@ -217,7 +218,8 @@ final class VistaProcesos extends SplitPane {
         dibujar();
         refrescarBitacora();
         RegistroProcesos.Metricas m = registro.metricas(foto);
-        tablaMetricas.getItems().setAll(m.filas());
+        actualizando = true;
+        try { tablaMetricas.getItems().setAll(m.filas()); } finally { actualizando = false; }
         promedios.setText(m.terminados() == 0
                 ? "Aún no termina ningún proceso · uso de CPU " + String.format("%.1f %%", m.usoCpu())
                 : String.format("Terminados: %d de %d · retorno medio %.2f · espera media %.2f · respuesta media %.2f · uso de CPU %.1f %%",
@@ -230,12 +232,14 @@ final class VistaProcesos extends SplitPane {
         Set<Momento> momentos = indice <= 0 ? Set.of() : EnumSet.of(Momento.values()[indice - 1]);
         int pid = soloElegido.isSelected() ? seleccionado : Instantanea.NINGUNO;
         if (soloElegido.isSelected() && pid == Instantanea.NINGUNO) {
-            tablaBitacora.getItems().clear();
+            actualizando = true;
+            try { tablaBitacora.getItems().clear(); } finally { actualizando = false; }
             conteo.setText("Elige un proceso");
             return;
         }
         List<Instantanea.Suceso> lista = registro.bitacora(foto.t(), pid, momentos, MAX_BITACORA);
-        tablaBitacora.getItems().setAll(lista);
+        actualizando = true;
+        try { tablaBitacora.getItems().setAll(lista); } finally { actualizando = false; }
         Map<Momento, Integer> c = registro.conteoMomentos(foto.t());
         StringBuilder sb = new StringBuilder();
         for (Momento m : Momento.values()) sb.append(m.name().toLowerCase()).append(' ').append(c.get(m)).append("   ");

@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.motor.Instantanea;
 import pe.uni.so.motor.Momento;
 import pe.uni.so.procesos.Estado;
@@ -52,12 +53,14 @@ public final class RegistroProcesos {
     private int ultimoT = -1;
     private int ticksCpuOcupada;                               // ticks con algún proceso en CPU, hasta ultimoT
     private final List<Integer> cpuOcupadaHasta = new ArrayList<>();   // acumulado por t
+    private final Map<Integer, Integer> primeraCpu = new HashMap<>();  // pid → tick en que ejecutó por primera vez
 
     /** Olvida todo (al reiniciar o volver a simular desde t = 0). */
     public void reiniciar() {
         tramos.clear();
         sucesos.clear();
         cpuOcupadaHasta.clear();
+        primeraCpu.clear();
         ticksCpuOcupada = 0;
         ultimoT = -1;
     }
@@ -71,7 +74,7 @@ public final class RegistroProcesos {
      */
     public void registrar(Instantanea f) {
         int t = f.t();
-        if (t < ultimoT) throw new IllegalStateException("La foto t = " + t + " es anterior a la última registrada (" + ultimoT + ")");
+        if (t < ultimoT) throw new EventoInvalidoException("La foto t = " + t + " es anterior a la última registrada (" + ultimoT + ")");
         for (Instantanea.Proceso p : f.procesos()) {
             if (p.llegada() > t) continue;                                // aún no llega: no aparece en el Gantt
             List<Tramo> lista = tramos.computeIfAbsent(p.pid(), k -> new ArrayList<>());
@@ -89,7 +92,11 @@ public final class RegistroProcesos {
         }
         if (t > ultimoT) {
             sucesos.addAll(f.sucesos());
-            if (!f.cpu().libre()) ticksCpuOcupada++;
+            int ejecuto = f.cpu().ejecuto();                         // quién ejecutó en el tick [t − 1, t)
+            if (ejecuto != Instantanea.NINGUNO) {
+                ticksCpuOcupada++;
+                primeraCpu.putIfAbsent(ejecuto, t - 1);
+            }
             while (cpuOcupadaHasta.size() <= t) cpuOcupadaHasta.add(ticksCpuOcupada);
             ultimoT = t;
         }
@@ -140,11 +147,10 @@ public final class RegistroProcesos {
         long sumaRetorno = 0, sumaEspera = 0, sumaRespuesta = 0;
         int terminados = 0;
         for (Instantanea.Proceso p : f.procesos()) {
-            int fin = -1, primerDespacho = -1;
-            for (Tramo x : tramos(p.pid(), t)) {
-                if (x.estado() == Estado.EJECUTANDO && primerDespacho < 0) primerDespacho = x.desde();
-                if (x.estado() == Estado.TERMINADO) fin = x.desde();
-            }
+            int fin = -1;
+            for (Tramo x : tramos(p.pid(), t)) if (x.estado() == Estado.TERMINADO) fin = x.desde();
+            Integer cpu = primeraCpu.get(p.pid());                       // tick real de su primera instrucción
+            int primerDespacho = cpu != null && cpu < t ? cpu : -1;
             int retorno = fin >= 0 ? fin - p.llegada() : -1;
             int respuesta = primerDespacho >= 0 ? primerDespacho - p.llegada() : -1;
             filas.add(new FilaMetricas(p.pid(), p.llegada(), p.burst(), p.prioridad(), p.estado(), fin, retorno, respuesta,
@@ -158,7 +164,7 @@ public final class RegistroProcesos {
         }
         double n = terminados;
         int ocupada = t < cpuOcupadaHasta.size() ? cpuOcupadaHasta.get(t) : ticksCpuOcupada;
-        double uso = t <= 0 ? 0 : 100.0 * ocupada / (t + 1);
+        double uso = t <= 0 ? 0 : 100.0 * ocupada / t;                    // ticks transcurridos: [0, t)
         return new Metricas(filas, terminados,
                 terminados == 0 ? Double.NaN : sumaRetorno / n,
                 terminados == 0 ? Double.NaN : sumaEspera / n,
