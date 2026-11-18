@@ -112,6 +112,7 @@ final class VentanaMaquina {
     private final SplitPane centro = new SplitPane();
     private final StackPane contenedorVista = new StackPane();     // la arena o la vista de la vista elegida
     private final VistaProcesos vistaProcesos = new VistaProcesos(this::elegirProceso);
+    private final VistaMemoria vistaMemoria = new VistaMemoria(this::elegirProceso);
     private final Node panelExplorador, panelPropiedades;
     private final BooleanProperty verExplorador = new SimpleBooleanProperty(true), verPropiedades = new SimpleBooleanProperty(true);
     private int seleccionado = Instantanea.NINGUNO;
@@ -503,6 +504,7 @@ final class VentanaMaquina {
         sincronizarExplorador(foto);
         lienzo.mostrar(foto);
         if (selectorVista.getValue() == Vista.PROCESOS) vistaProcesos.mostrar(sesion.registro(), foto);
+        else if (selectorVista.getValue() == Vista.MEMORIA) vistaMemoria.mostrar(foto);
         for (Instantanea.Proceso p : foto.procesos()) {
             TreeItem<Nodo> item = itemsProceso.get(p.pid());
             if (item != null && item.getGraphic() instanceof Circle c) c.setFill(Color.web(p.color()));
@@ -580,6 +582,7 @@ final class VentanaMaquina {
         seleccionado = pid;
         lienzo.seleccionar(pid);
         vistaProcesos.seleccionar(pid);
+        vistaMemoria.seleccionar(pid);
         mostrarPropiedades(sesion.vista());
         if (!actualizandoTabla) {
             actualizandoTabla = true;
@@ -629,6 +632,9 @@ final class VentanaMaquina {
         if (v == Vista.PROCESOS) {                                     // [P16] Gantt, bitácora y métricas
             contenedorVista.getChildren().setAll(vistaProcesos);
             vistaProcesos.mostrar(sesion.registro(), sesion.vista());
+        } else if (v == Vista.MEMORIA) {                               // [M1][M3][M4][M7] marcos, tablas y traductor
+            contenedorVista.getChildren().setAll(vistaMemoria);
+            vistaMemoria.mostrar(sesion.vista());
         } else if (!contenedorVista.getChildren().contains(lienzo)) contenedorVista.getChildren().setAll(lienzo);
         if (v == Vista.MAPA_ESTADOS) lienzo.ajustar();
     }
