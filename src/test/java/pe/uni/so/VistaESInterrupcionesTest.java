@@ -47,22 +47,26 @@ class VistaESInterrupcionesTest {
         assertTrue(f.stream().allMatch(x -> !x.rutina().isBlank()));
     }
 
-    @Test @DisplayName("[E1][E6][P16] Gantt de dispositivos: en cada foto, el proceso atendido está dentro de un servicio registrado")
+    @Test @DisplayName("[E1][E6][P16] Gantt de dispositivos: si en la foto t el dispositivo trabajó para P, hay un servicio de P que cubre [t − 1, t)")
     void serviciosCoincidenConLasFotos() {
         SesionSimulacion s = alFinal();
         int fin = s.vista().t();
         RegistroES r = s.registroES();
         Map<Dispositivo, Integer> colaMax = new EnumMap<>(Dispositivo.class);
+        Map<Dispositivo, int[]> previo = new EnumMap<>(Dispositivo.class);
         for (int t = 0; t <= fin; t++) {
             s.irA(t);
             for (Instantanea.FichaDispositivo d : s.vista().dispositivos()) {
                 int espera = d.cola().size() - (d.atendiendo() == Instantanea.NINGUNO ? 0 : 1);
                 colaMax.merge(d.dispositivo(), espera, Math::max);
-                if (d.atendiendo() == Instantanea.NINGUNO) continue;
-                final int tt = t;
+                int[] p = previo.put(d.dispositivo(), new int[] {d.atendiendo(), d.restante()});
+                boolean trabajo = d.atendiendo() != Instantanea.NINGUNO && t > 0
+                        && (p == null || p[0] != d.atendiendo() || d.restante() < p[1]);
+                if (!trabajo) continue;
+                final int tick = t - 1;
                 assertTrue(r.servicios(d.dispositivo(), fin).stream()
-                                .anyMatch(x -> x.pid() == d.atendiendo() && x.desde() <= tt && tt < x.hasta()),
-                        d.dispositivo() + " atiende a P" + d.atendiendo() + " en t = " + t);
+                                .anyMatch(x -> x.pid() == d.atendiendo() && x.desde() <= tick && tick < x.hasta()),
+                        d.dispositivo() + " trabajó para P" + d.atendiendo() + " en [" + tick + ", " + t + ")");
             }
         }
         for (Dispositivo d : Dispositivo.values()) {
@@ -70,7 +74,8 @@ class VistaESInterrupcionesTest {
             for (int i = 1; i < lista.size(); i++) assertTrue(lista.get(i - 1).hasta() <= lista.get(i).desde(), d + " sin solapes");
             RegistroES.ResumenDispositivo res = r.resumen(d, fin);
             assertEquals(lista.size(), res.servicios());
-            assertEquals(100.0 * res.ticksOcupado() / (fin + 1), res.uso(), 1e-9);
+            assertEquals(100.0 * res.ticksOcupado() / fin, res.uso(), 1e-9);
+            assertTrue(lista.stream().allMatch(x -> x.hasta() <= fin));
             assertEquals(colaMax.getOrDefault(d, 0), res.colaMaxima(), d.toString());
         }
         assertTrue(Dispositivo.values().length > 0 && r.servicios(Dispositivo.DISCO, fin).size() + r.servicios(Dispositivo.TECLADO, fin).size() > 0);
@@ -98,6 +103,50 @@ class VistaESInterrupcionesTest {
         assertTrue(disco.stream().allMatch(e -> e.tipo() == TipoInterrupcion.DISCO));
         assertTrue(s.registroES().bitacora(50, Set.of(), 1000).stream().allMatch(e -> e.t() <= 50));
         assertEquals(5, s.registroES().bitacora(fin, Set.of(), 5).size());
+    }
+
+    private static Instantanea foto(int t, int pid, int restante, Map<TipoInterrupcion, Integer> atendidas) {
+        List<Instantanea.FichaDispositivo> ds = new java.util.ArrayList<>();
+        for (Dispositivo d : Dispositivo.values())
+            ds.add(d == Dispositivo.DISCO && pid != Instantanea.NINGUNO
+                    ? new Instantanea.FichaDispositivo(d, pe.uni.so.es.VelocidadDispositivo.NORMAL, List.of(pid), pid, restante,
+                            pe.uni.so.es.SolicitudES.Operacion.LEER)
+                    : new Instantanea.FichaDispositivo(d, pe.uni.so.es.VelocidadDispositivo.NORMAL, List.of(), Instantanea.NINGUNO, -1, null));
+        Instantanea.Pic pic = new Instantanea.Pic(List.of(), List.of(), List.of(), atendidas);
+        return new Instantanea(t, null, List.of(), List.of(), List.of(), ds, pic, null, List.of());
+    }
+
+    @Test @DisplayName("[E1][E6] Servicio de duración conocida: ocupa [t − 1, t) por cada tick trabajado y levanta su IRQ al terminar")
+    void servicioDeDuracionConocida() {
+        RegistroES r = new RegistroES();
+        Map<TipoInterrupcion, Integer> cero = Map.of();
+        r.registrar(foto(0, Instantanea.NINGUNO, -1, cero));
+        r.registrar(foto(1, Instantanea.NINGUNO, -1, cero));
+        r.registrar(foto(2, 5, 2, cero));                                  // P5 empieza: trabajó en [1, 2)
+        r.registrar(foto(3, 5, 1, cero));
+        r.registrar(foto(4, 5, 0, cero));                                  // termina en [3, 4): IRQ levantada
+        r.registrar(foto(5, 5, 0, cero));                                  // espera que la atiendan: no trabaja
+        r.registrar(foto(6, 7, 0, Map.of(TipoInterrupcion.DISCO, 1)));     // atendida; P7 dura 1 tick y termina en [5, 6)
+        r.registrar(foto(7, 7, 0, Map.of(TipoInterrupcion.DISCO, 1)));     // IRQ de P7 sigue pendiente
+        r.registrar(foto(8, 8, 0, Map.of(TipoInterrupcion.DISCO, 2)));     // P8 también dura 1 tick
+        assertEquals(List.of(new Servicio(Dispositivo.DISCO, 5, pe.uni.so.es.SolicitudES.Operacion.LEER, 1, 4),
+                        new Servicio(Dispositivo.DISCO, 7, pe.uni.so.es.SolicitudES.Operacion.LEER, 5, 6),
+                        new Servicio(Dispositivo.DISCO, 8, pe.uni.so.es.SolicitudES.Operacion.LEER, 7, 8)),
+                r.servicios(Dispositivo.DISCO, 8));
+        assertEquals(List.of(new Servicio(Dispositivo.DISCO, 5, pe.uni.so.es.SolicitudES.Operacion.LEER, 1, 3)),
+                r.servicios(Dispositivo.DISCO, 3));                         // recortado a la foto t = 3
+        RegistroES.ResumenDispositivo res = r.resumen(Dispositivo.DISCO, 8);
+        assertEquals(5, res.ticksOcupado());
+        assertEquals(100.0 * 5 / 8, res.uso(), 1e-9);
+        assertEquals(0, r.resumen(Dispositivo.DISCO, 0).uso(), 1e-9);
+        List<Integer> levantadas = r.bitacora(8, Set.of(TipoInterrupcion.DISCO), 100).stream()
+                .filter(e -> e.accion() == Accion.LEVANTADA).map(RegistroES.EventoInterrupcion::t).toList();
+        assertEquals(List.of(8, 6, 4), levantadas);                        // una por fin de servicio, aunque la IRQ siga pendiente
+    }
+
+    @Test @DisplayName("[I1] IVT: pedir el vector de null es un error del simulador, no una excepción genérica")
+    void vectorInvalido() {
+        org.junit.jupiter.api.Assertions.assertThrows(pe.uni.so.excepciones.ParametroInvalidoException.class, () -> TablaVectores.de(null));
     }
 
     @Test @DisplayName("[E1][P16] Al re-simular un tick antiguo, servicios y bitácora salen idénticos")

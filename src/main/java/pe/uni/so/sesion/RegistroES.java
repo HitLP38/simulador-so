@@ -20,7 +20,11 @@ import pe.uni.so.motor.Instantanea;
  */
 public final class RegistroES {
 
-    /** Un servicio de E/S: el dispositivo atendió al proceso en los ticks [desde, hasta). */
+    /**
+     * Un servicio de E/S: el dispositivo trabajó para el proceso en los ticks [desde, hasta). La foto
+     * t cierra el tick [t − 1, t): si en ella el dispositivo atiende a P y su restante bajó (o el
+     * servicio empezó), trabajó para P en ese tick.
+     */
     public record Servicio(Dispositivo dispositivo, int pid, SolicitudES.Operacion operacion, int desde, int hasta) {
         public int duracion() { return hasta - desde; }
     }
@@ -66,14 +70,19 @@ public final class RegistroES {
         for (Instantanea.FichaDispositivo d : f.dispositivos()) {
             List<Servicio> lista = servicios.computeIfAbsent(d.dispositivo(), k -> new ArrayList<>());
             int[] previo = anterior.get(d.dispositivo());
-            if (d.atendiendo() != Instantanea.NINGUNO) {
+            int pid = d.atendiendo();
+            boolean mismo = previo != null && previo[0] == pid;
+            boolean trabajo = pid != Instantanea.NINGUNO && t > 0 && (!mismo || d.restante() < previo[1]);
+            if (trabajo) {                                             // trabajó para P en [t − 1, t)
                 int i = lista.size() - 1;
-                boolean sigue = previo != null && previo[0] == d.atendiendo() && d.restante() < previo[1]
-                        && i >= 0 && lista.get(i).hasta() == t;
+                boolean sigue = mismo && i >= 0 && lista.get(i).pid() == pid && lista.get(i).hasta() == t - 1
+                        && previo[1] > 0;                              // mismo pedido: su restante sigue bajando
                 if (sigue) {
                     Servicio s = lista.get(i);
-                    lista.set(i, new Servicio(s.dispositivo(), s.pid(), s.operacion(), s.desde(), t + 1));
-                } else lista.add(new Servicio(d.dispositivo(), d.atendiendo(), d.operacion(), t, t + 1));
+                    lista.set(i, new Servicio(s.dispositivo(), s.pid(), s.operacion(), s.desde(), t));
+                } else lista.add(new Servicio(d.dispositivo(), pid, d.operacion(), t - 1, t));
+                if (d.restante() == 0)                                 // [E6] terminó en este tick: levantó su IRQ
+                    eventos.add(new EventoInterrupcion(t, d.dispositivo().interrupcion, Accion.LEVANTADA, 1));
             }
             anterior.put(d.dispositivo(), new int[] {d.atendiendo(), d.restante()});
             List<int[]> c = colas.computeIfAbsent(d.dispositivo(), k -> new ArrayList<>());
@@ -82,8 +91,6 @@ public final class RegistroES {
         }
         Instantanea.Pic pic = f.pic();
         if (pic != null) {
-            for (TipoInterrupcion x : pic.pendientes())
-                if (picAnterior == null || !picAnterior.pendientes().contains(x)) eventos.add(new EventoInterrupcion(t, x, Accion.LEVANTADA, 1));
             for (TipoInterrupcion x : TipoInterrupcion.values()) {
                 int delta = pic.atendidas(x) - (picAnterior == null ? 0 : picAnterior.atendidas(x));
                 if (delta > 0) eventos.add(new EventoInterrupcion(t, x, Accion.ATENDIDA, delta));
@@ -97,19 +104,19 @@ public final class RegistroES {
     public List<Servicio> servicios(Dispositivo d, int t) {
         List<Servicio> r = new ArrayList<>();
         for (Servicio s : servicios.getOrDefault(d, List.of())) {
-            if (s.desde() > t) break;
-            r.add(s.hasta() > t + 1 ? new Servicio(d, s.pid(), s.operacion(), s.desde(), t + 1) : s);
+            if (s.desde() >= t) break;                                 // la foto t solo conoce los ticks hasta [t − 1, t)
+            r.add(s.hasta() > t ? new Servicio(d, s.pid(), s.operacion(), s.desde(), t) : s);
         }
         return Collections.unmodifiableList(r);
     }
 
-    /** Resumen del dispositivo hasta el instante t: servicios iniciados, ticks ocupado, uso (%) y cola más larga. */
+    /** Resumen del dispositivo hasta el instante t: servicios, ticks trabajados, uso (ticks trabajados / t, en %) y cola más larga. */
     public ResumenDispositivo resumen(Dispositivo d, int t) {
         List<Servicio> lista = servicios(d, t);
         int ocupado = lista.stream().mapToInt(Servicio::duracion).sum();
         int max = 0;
         for (int[] c : colas.getOrDefault(d, List.of())) if (c[0] <= t) max = Math.max(max, c[1]);
-        return new ResumenDispositivo(d, lista.size(), ocupado, t < 0 ? 0 : 100.0 * ocupado / (t + 1), max);
+        return new ResumenDispositivo(d, lista.size(), ocupado, t <= 0 ? 0 : 100.0 * ocupado / t, max);   // t ticks transcurridos
     }
 
     /**

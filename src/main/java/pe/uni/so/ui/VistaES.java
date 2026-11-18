@@ -183,7 +183,7 @@ final class VistaES extends SplitPane {
         g.setFill(p.fondoArriba());
         g.fillRect(0, 0, ancho, alto);
         if (registro == null || foto == null) return;
-        hasta = foto.t() + 1;
+        hasta = Math.max(1, foto.t());                                // la foto t cierra el tick [t − 1, t)
         desde = ventana.getValue().ticks <= 0 ? 0 : Math.max(0, hasta - ventana.getValue().ticks);
         double util = ancho - MARGEN_IZQ - MARGEN_DER;
         double escala = util / Math.max(1, hasta - desde);

@@ -3,6 +3,7 @@ package pe.uni.so.sesion;
 import java.util.ArrayList;
 import java.util.List;
 import pe.uni.so.es.Dispositivo;
+import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.interrupciones.ControladorInterrupciones;
 import pe.uni.so.interrupciones.TipoInterrupcion;
 
@@ -37,7 +38,7 @@ public final class TablaVectores {
     /** Fila de un tipo de interrupción. */
     public static Fila de(TipoInterrupcion t) {
         for (Fila f : FILAS) if (f.tipo() == t) return f;
-        throw new IllegalArgumentException(String.valueOf(t));
+        throw new ParametroInvalidoException("No hay vector para la interrupción " + t);
     }
 
     private static List<Fila> armar() {
