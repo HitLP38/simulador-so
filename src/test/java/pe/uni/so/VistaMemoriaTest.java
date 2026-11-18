@@ -167,4 +167,27 @@ class VistaMemoriaTest {
         s.irA(40);
         assertEquals(antes, s.vista().memoria());
     }
+
+    @Test @DisplayName("[M7] Próxima víctima con cuota 2 y referencias A, B, A: FIFO elige A, LRU elige B; consultarla no cambia nada")
+    void proximaVictimaFifoYLru() {
+        for (Reemplazo politica : Reemplazo.values()) {
+            GestorMemoria g = new GestorMemoria(2, B, EstrategiaAsignacion.primerAjuste(), politica);
+            EspacioProceso e = new EspacioProceso(300 * KIB, 0.25, 0.25, B);
+            g.repartirCuotas(Map.of(1, e));
+            g.asignar(1, e);
+            assertEquals(2, g.cuota(1));
+            long texto = e.base(EspacioProceso.Segmento.TEXTO);
+            long a = texto / B, b = a + 1, c = a + 2;
+            g.acceder(1, a * B, 1, false);
+            g.acceder(1, b * B, 1, false);
+            g.acceder(1, a * B, 1, false);                                     // A vuelve a usarse
+            long esperada = politica == Reemplazo.FIFO ? a : b;
+            assertEquals(esperada, g.proximaVictima(1), politica.toString());
+            assertEquals(esperada, g.proximaVictima(1), politica + ": consultar dos veces da lo mismo");
+            g.acceder(1, c * B, 1, false);                                     // C entra y expulsa a la víctima
+            assertFalse(g.marcosDe(1).contains(esperada), politica + ": salió la víctima anunciada");
+            assertTrue(g.marcosDe(1).contains(c));
+            assertTrue(g.marcosDe(1).contains(politica == Reemplazo.FIFO ? b : a));
+        }
+    }
 }
