@@ -62,6 +62,7 @@ public class SesionSimulacion {
 
     private final List<Ingreso> ingresos = new ArrayList<>();
     private final RegistroProcesos registro = new RegistroProcesos();   // [P16] Gantt, bitácora y métricas
+    private final RegistroES registroES = new RegistroES();             // [E1][I3] servicios de E/S e interrupciones
     private int aplicados;                                      // ingresos ya hechos en el kernel actual
     private CreadorProcesos creador;                            // crea los procesos de los ingresos
     private int pidBase;                                        // el mayor PID de la carga inicial
@@ -83,12 +84,14 @@ public class SesionSimulacion {
         kernel = crearKernel();
         vista = kernel.instantanea();
         registro.registrar(vista);
+        registroES.registrar(vista);
     }
 
     private Kernel crearKernel() {
         finesQuantum.clear();                                       // el acumulado se rehace al simular de nuevo
         finesQuantum.add(0);
         registro.reiniciar();
+        registroES.reiniciar();
         List<Pcb> procesos = carga.get();
         Kernel k = maquina.configuracion().crearKernel(procesos);
         k.limitarHistorial(capacidadHistorial);
@@ -161,6 +164,9 @@ public class SesionSimulacion {
      */
     public RegistroProcesos registro() { return registro; }
 
+    /** [E1][E6][I3][I4] Registro de servicios de E/S y de interrupciones; las consultas se recortan a la foto mirada. */
+    public RegistroES registroES() { return registroES; }
+
     /** [P14][P18] Ingresos hechos en esta sesión, en orden (se repiten al volver a simular). */
     public List<Ingreso> ingresos() { return Collections.unmodifiableList(ingresos); }
 
@@ -222,6 +228,7 @@ public class SesionSimulacion {
                 kernel = crearKernel();
                 aplicarPendientes();                         // los ingresos hechos en t = 0
                 registro.registrar(kernel.instantanea());
+                registroES.registrar(kernel.instantanea());
                 atascada = false;
                 ticksSinProgreso = 0;
                 while (kernel.t() < t && !atascada) simularUnTick();
@@ -277,6 +284,7 @@ public class SesionSimulacion {
         aplicados++;
         kernel.ingresar(nuevos);
         registro.registrar(kernel.instantanea());           // los nuevos aparecen ya en el Gantt
+        registroES.registrar(kernel.instantanea());
         maximoAlcanzado = kernel.t();                           // el futuro cambia: la línea llega hasta aquí
         atascada = false;
         ticksSinProgreso = 0;
@@ -318,6 +326,7 @@ public class SesionSimulacion {
         ingresos.clear();
         kernel = crearKernel();
         registro.registrar(kernel.instantanea());
+        registroES.registrar(kernel.instantanea());
         atascada = false;
         ticksSinProgreso = 0;
         maximoAlcanzado = 0;
@@ -334,6 +343,7 @@ public class SesionSimulacion {
         aplicarPendientes();                                    // los ingresos hechos en este instante
         vista = kernel.instantanea();
         registro.registrar(vista);
+        registroES.registrar(vista);
         maximoAlcanzado = Math.max(maximoAlcanzado, kernel.t());
         long fines = vista.procesos().stream().filter(p -> p.tiene(Instantanea.Insignia.FIN_QUANTUM)).count();
         finesQuantum.add(finesQuantum.get(finesQuantum.size() - 1) + (int) fines);
