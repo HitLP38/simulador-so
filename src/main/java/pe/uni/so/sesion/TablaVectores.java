@@ -19,8 +19,9 @@ public final class TablaVectores {
      *
      * @param irq       línea del PIC 8259, o −1 si es síncrona (excepción o llamada al sistema)
      * @param prioridad 1 = la más alta entre las de hardware (menor IRQ); 0 si es síncrona (se atiende al instante)
-     * @param generada  ¿la simulación la produce? Hoy solo los fines de E/S de los dispositivos pasan por el PIC;
-     *                  el fin de quantum se resuelve sin IRQ y las excepciones y la int 0x80 quedan definidas en la IVT
+     * @param generada  ¿la simulación la produce? Los fines de E/S pasan por el PIC; el TIMER se registra en cada
+     *                  fin de quantum (el kernel lo resuelve sin IRQ); las excepciones y la int 0x80 quedan definidas
+     *                  en la IVT pero la simulación no las provoca
      */
     public record Fila(TipoInterrupcion tipo, int vector, TipoInterrupcion.Clase clase, int irq, int prioridad,
                        Dispositivo dispositivo, String rutina, boolean generada) {
@@ -51,7 +52,7 @@ public final class TablaVectores {
             Dispositivo d = null;
             for (Dispositivo x : Dispositivo.values()) if (x.interrupcion == t) d = x;
             r.add(new Fila(t, t.vector, t.clase, hw ? ControladorInterrupciones.irq(t) : -1,
-                    hw ? hardware.indexOf(t) + 1 : 0, d, rutina(t), d != null));
+                    hw ? hardware.indexOf(t) + 1 : 0, d, rutina(t), d != null || t == TipoInterrupcion.TIMER));
         }
         r.sort(java.util.Comparator.comparingInt(Fila::vector));
         return List.copyOf(r);
@@ -64,7 +65,7 @@ public final class TablaVectores {
             case INSTRUCCION_INVALIDA -> "Aborta el proceso (código de operación inválido)";
             case ACCESO_ILEGAL -> "Aborta el proceso (acceso fuera de sus segmentos)";
             case FALLO_PAGINA -> "Trae la página del swap a un marco (reemplazo local si la cuota está llena)";
-            case TIMER -> "Reloj del sistema: cuenta el tick y revisa el quantum";
+            case TIMER -> "Fin de quantum (momento b): expropia al proceso en CPU y lo devuelve a Listos (el kernel lo resuelve sin pasar por el PIC)";
             case TECLADO -> "Fin de E/S del teclado: el proceso pasa de Bloqueado a Listo (momento c)";
             case DISCO -> "Fin de E/S del disco: el proceso pasa de Bloqueado a Listo (momento c)";
             case IMPRESORA -> "Fin de E/S de la impresora: el proceso pasa de Bloqueado a Listo (momento c)";

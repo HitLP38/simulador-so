@@ -129,9 +129,10 @@ public record Instantanea(int t, Cpu cpu, List<Integer> nuevos, List<Integer> li
      * @param atendiendo PID del pedido en servicio, o {@link #NINGUNO}
      * @param restante   ticks que le faltan al pedido en servicio, o -1 si no atiende ninguno
      * @param operacion  operación del pedido en servicio, o null
+     * @param trabajados [P16] ticks que el dispositivo ya trabajó en el pedido en servicio (un fin forzado no los suma), o -1
      */
     public record FichaDispositivo(Dispositivo dispositivo, VelocidadDispositivo velocidad, List<Integer> cola,
-                                   int atendiendo, int restante, SolicitudES.Operacion operacion) {
+                                   int atendiendo, int restante, SolicitudES.Operacion operacion, int trabajados) {
         public FichaDispositivo { cola = List.copyOf(cola); }
 
         public int irq() { return dispositivo.interrupcion.vector - 0x20; }

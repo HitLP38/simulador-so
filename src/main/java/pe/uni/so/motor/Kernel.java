@@ -491,7 +491,8 @@ public class Kernel {
             Pcb atendido = gestorES.atendiendo(d);
             SolicitudES s = atendido == null ? null : gestorES.solicitud(atendido);
             dispositivos.add(new Instantanea.FichaDispositivo(d, gestorES.velocidad(d), colas.cola(d).stream().map(p -> p.pid).toList(),
-                    pid(atendido), atendido == null ? -1 : gestorES.restante(d), s == null ? null : s.operacion()));
+                    pid(atendido), atendido == null ? -1 : gestorES.restante(d), s == null ? null : s.operacion(),
+                    atendido == null ? -1 : gestorES.trabajados(d)));
         }
 
         Instantanea.Pic foto = new Instantanea.Pic(pic.pendientes(), pic.enmascaradas(), pic.pilaEnServicio(), pic.atendidas());

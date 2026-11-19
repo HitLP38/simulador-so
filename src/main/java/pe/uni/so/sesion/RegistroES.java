@@ -71,23 +71,30 @@ public final class RegistroES {
             List<Servicio> lista = servicios.computeIfAbsent(d.dispositivo(), k -> new ArrayList<>());
             int[] previo = anterior.get(d.dispositivo());
             int pid = d.atendiendo();
+            // Mismo pedido si el dispositivo sigue con el mismo proceso: entre dos pedidos de un proceso siempre
+            // hay una foto sin servicio (la IRQ se atiende, el proceso vuelve a la CPU y recién pide de nuevo).
             boolean mismo = previo != null && previo[0] == pid;
-            boolean trabajo = pid != Instantanea.NINGUNO && t > 0 && (!mismo || d.restante() < previo[1]);
-            if (trabajo) {                                             // trabajó para P en [t − 1, t)
+            boolean trabajo = pid != Instantanea.NINGUNO && t > 0 && d.trabajados() > (mismo ? previo[2] : 0);
+            if (trabajo) {                                             // el dispositivo trabajó para P en [t − 1, t)
                 int i = lista.size() - 1;
-                boolean sigue = mismo && i >= 0 && lista.get(i).pid() == pid && lista.get(i).hasta() == t - 1
-                        && previo[1] > 0;                              // mismo pedido: su restante sigue bajando
-                if (sigue) {
+                if (mismo && i >= 0 && lista.get(i).pid() == pid && lista.get(i).hasta() == t - 1) {
                     Servicio s = lista.get(i);
                     lista.set(i, new Servicio(s.dispositivo(), s.pid(), s.operacion(), s.desde(), t));
                 } else lista.add(new Servicio(d.dispositivo(), pid, d.operacion(), t - 1, t));
-                if (d.restante() == 0)                                 // [E6] terminó en este tick: levantó su IRQ
-                    eventos.add(new EventoInterrupcion(t, d.dispositivo().interrupcion, Accion.LEVANTADA, 1));
             }
-            anterior.put(d.dispositivo(), new int[] {d.atendiendo(), d.restante()});
+            if (pid != Instantanea.NINGUNO && t > 0 && d.restante() == 0 && (!mismo || previo[1] > 0))
+                eventos.add(new EventoInterrupcion(t, d.dispositivo().interrupcion, Accion.LEVANTADA, 1));   // [E6][E9] fin (también forzado)
+            anterior.put(d.dispositivo(), new int[] {pid, d.restante(), d.trabajados()});
             List<int[]> c = colas.computeIfAbsent(d.dispositivo(), k -> new ArrayList<>());
             int largo = d.cola().size() - (d.atendiendo() == Instantanea.NINGUNO ? 0 : 1);   // en espera (sin el atendido)
             if (c.isEmpty() || c.get(c.size() - 1)[1] != largo) c.add(new int[] {t, largo});
+        }
+        // [I3] Fin de quantum: el kernel lo resuelve en el momento b sin pasar por el PIC (no hay IRQ 0 en el
+        // IRR), pero es la interrupción del TIMER; la foto lo marca con la insignia FIN_QUANTUM.
+        int finesQuantum = (int) f.procesos().stream().filter(p -> p.tiene(Instantanea.Insignia.FIN_QUANTUM)).count();
+        if (finesQuantum > 0) {
+            eventos.add(new EventoInterrupcion(t, TipoInterrupcion.TIMER, Accion.LEVANTADA, finesQuantum));
+            eventos.add(new EventoInterrupcion(t, TipoInterrupcion.TIMER, Accion.ATENDIDA, finesQuantum));
         }
         Instantanea.Pic pic = f.pic();
         if (pic != null) {
@@ -117,6 +124,13 @@ public final class RegistroES {
         int max = 0;
         for (int[] c : colas.getOrDefault(d, List.of())) if (c[0] <= t) max = Math.max(max, c[1]);
         return new ResumenDispositivo(d, lista.size(), ocupado, t <= 0 ? 0 : 100.0 * ocupado / t, max);   // t ticks transcurridos
+    }
+
+    /** Interrupciones del tipo atendidas hasta el instante t (las de E/S por el PIC; las del TIMER por fin de quantum). */
+    public int atendidas(TipoInterrupcion tipo, int t) {
+        int n = 0;
+        for (EventoInterrupcion e : eventos) if (e.t() <= t && e.tipo() == tipo && e.accion() == Accion.ATENDIDA) n += e.veces();
+        return n;
     }
 
     /**
