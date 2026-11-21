@@ -45,10 +45,11 @@ public final class RegistroES {
     public record ResumenDispositivo(Dispositivo dispositivo, int servicios, int ticksOcupado, double uso, int colaMaxima) {}
 
     private final Map<Dispositivo, List<Servicio>> servicios = new EnumMap<>(Dispositivo.class);
-    private final Map<Dispositivo, int[]> anterior = new EnumMap<>(Dispositivo.class);       // {pid, restante} del tick previo
+    private final Map<Dispositivo, int[]> anterior = new EnumMap<>(Dispositivo.class);       // {pid, restante, trabajados} del tick previo
     private final Map<Dispositivo, List<int[]>> colas = new EnumMap<>(Dispositivo.class);     // {t, largo} cuando cambia
     private final List<EventoInterrupcion> eventos = new ArrayList<>();
     private Instantanea.Pic picAnterior;
+    private int llamadasAnterior;                                                                // int 0x80 acumuladas en la foto previa
     private int ultimoT = -1;
 
     public void reiniciar() {
@@ -57,6 +58,7 @@ public final class RegistroES {
         colas.clear();
         eventos.clear();
         picAnterior = null;
+        llamadasAnterior = 0;
         ultimoT = -1;
     }
 
@@ -82,12 +84,19 @@ public final class RegistroES {
                     lista.set(i, new Servicio(s.dispositivo(), s.pid(), s.operacion(), s.desde(), t));
                 } else lista.add(new Servicio(d.dispositivo(), pid, d.operacion(), t - 1, t));
             }
-            if (pid != Instantanea.NINGUNO && t > 0 && d.restante() == 0 && (!mismo || previo[1] > 0))
-                eventos.add(new EventoInterrupcion(t, d.dispositivo().interrupcion, Accion.LEVANTADA, 1));   // [E6][E9] fin (también forzado)
             anterior.put(d.dispositivo(), new int[] {pid, d.restante(), d.trabajados()});
             List<int[]> c = colas.computeIfAbsent(d.dispositivo(), k -> new ArrayList<>());
             int largo = d.cola().size() - (d.atendiendo() == Instantanea.NINGUNO ? 0 : 1);   // en espera (sin el atendido)
             if (c.isEmpty() || c.get(c.size() - 1)[1] != largo) c.add(new int[] {t, largo});
+        }
+        // [E6][E9] Levantamientos: el contador acumulado del PIC, no el estado del dispositivo. Así queda la
+        // IRQ de un fin forzado (tecla) aunque el kernel la atienda y libere el servicio antes de esta foto.
+        Instantanea.Pic pic = f.pic();
+        if (pic != null) {
+            for (TipoInterrupcion x : TipoInterrupcion.values()) {
+                int delta = pic.levantadas(x) - (picAnterior == null ? 0 : picAnterior.levantadas(x));
+                if (delta > 0) eventos.add(new EventoInterrupcion(t, x, Accion.LEVANTADA, delta));
+            }
         }
         // [I3] Fin de quantum: el kernel lo resuelve en el momento b sin pasar por el PIC (no hay IRQ 0 en el
         // IRR), pero es la interrupción del TIMER; la foto lo marca con la insignia FIN_QUANTUM.
@@ -96,7 +105,15 @@ public final class RegistroES {
             eventos.add(new EventoInterrupcion(t, TipoInterrupcion.TIMER, Accion.LEVANTADA, finesQuantum));
             eventos.add(new EventoInterrupcion(t, TipoInterrupcion.TIMER, Accion.ATENDIDA, finesQuantum));
         }
-        Instantanea.Pic pic = f.pic();
+        // [E2] Llamada al sistema int 0x80: síncrona, la provoca la instrucción y la CPU la atiende al instante.
+        if (f.cpu() != null) {
+            int llamadas = f.cpu().llamadasSistema() - llamadasAnterior;
+            if (llamadas > 0) {
+                eventos.add(new EventoInterrupcion(t, TipoInterrupcion.LLAMADA_SISTEMA, Accion.LEVANTADA, llamadas));
+                eventos.add(new EventoInterrupcion(t, TipoInterrupcion.LLAMADA_SISTEMA, Accion.ATENDIDA, llamadas));
+            }
+            llamadasAnterior = f.cpu().llamadasSistema();
+        }
         if (pic != null) {
             for (TipoInterrupcion x : TipoInterrupcion.values()) {
                 int delta = pic.atendidas(x) - (picAnterior == null ? 0 : picAnterior.atendidas(x));
@@ -126,7 +143,7 @@ public final class RegistroES {
         return new ResumenDispositivo(d, lista.size(), ocupado, t <= 0 ? 0 : 100.0 * ocupado / t, max);   // t ticks transcurridos
     }
 
-    /** Interrupciones del tipo atendidas hasta el instante t (las de E/S por el PIC; las del TIMER por fin de quantum). */
+    /** Interrupciones del tipo atendidas hasta el instante t (las de E/S por el PIC; el TIMER por fin de quantum; la int 0x80 por la CPU). */
     public int atendidas(TipoInterrupcion tipo, int t) {
         int n = 0;
         for (EventoInterrupcion e : eventos) if (e.t() <= t && e.tipo() == tipo && e.accion() == Accion.ATENDIDA) n += e.veces();

@@ -93,6 +93,7 @@ public class Kernel {
     private final List<ObservadorTick> observadores = new ArrayList<>();
     private int capacidadHistorial = CAPACIDAD_HISTORIAL;
     private Instantanea ultima;
+    private int llamadasSistema;                           // [E2][P16] int 0x80 acumuladas, para la bitácora
     private int inicioTick;                                // primer evento de la bitácora que aún no sale en una foto
     private Pcb ejecuto;                                   // quien usó la CPU en el tick (celda del Gantt)
     private final Set<Integer> expropiadosTick = new HashSet<>(), finQuantumTick = new HashSet<>();
@@ -271,6 +272,7 @@ public class Kernel {
         if (s.pid() != p.pid) throw new EventoInvalidoException("La solicitud es de P" + s.pid() + ", pero ejecuta " + p);
         colas.bloquearEnCpu(s.dispositivo());
         modo = Modo.KERNEL;                                // trap: vector 0x80
+        llamadasSistema++;
         p.registrarPedidoES();
         gestorES.registrar(p, s);
         registrar(t, Momento.A, p, "llamada al sistema 0x80: " + s + "; espera en su cola");
@@ -484,7 +486,8 @@ public class Kernel {
         Pcb enCpu = colas.enCpu();
         int quantum = enCpu == null || quantumDespacho == Integer.MAX_VALUE ? 0 : quantumDespacho;
         Instantanea.Cpu cpu = new Instantanea.Cpu(modo, pid(enCpu), pid(ejecuto), politica.nombre(), quantum,
-                enCpu == null ? 0 : usado, instruccionesPorTick, despachador.despachos(), desalojos, despachador.tiempoDespacho());
+                enCpu == null ? 0 : usado, instruccionesPorTick, despachador.despachos(), desalojos, despachador.tiempoDespacho(),
+                llamadasSistema);
 
         List<Instantanea.FichaDispositivo> dispositivos = new ArrayList<>();
         for (Dispositivo d : Dispositivo.values()) {
@@ -495,7 +498,8 @@ public class Kernel {
                     atendido == null ? -1 : gestorES.trabajados(d)));
         }
 
-        Instantanea.Pic foto = new Instantanea.Pic(pic.pendientes(), pic.enmascaradas(), pic.pilaEnServicio(), pic.atendidas());
+        Instantanea.Pic foto = new Instantanea.Pic(pic.pendientes(), pic.enmascaradas(), pic.pilaEnServicio(), pic.atendidas(),
+                pic.levantadas());
         Instantanea.Memoria memoria = gm == null ? null : new Instantanea.Memoria(gm.mapa().total(), ultimaMuestra,
                 gm.estrategia().nombre(), gm.reemplazo(), gm.fallosPagina(), gm.mmu().bloque(), gm.ocupacion(), memoriaDeProcesos(gm));
         return new Instantanea(t, cpu, nuevos, colas.listos().stream().map(p -> p.pid).toList(), fichas, dispositivos,

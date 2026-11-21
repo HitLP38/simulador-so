@@ -20,8 +20,8 @@ public final class TablaVectores {
      * @param irq       línea del PIC 8259, o −1 si es síncrona (excepción o llamada al sistema)
      * @param prioridad 1 = la más alta entre las de hardware (menor IRQ); 0 si es síncrona (se atiende al instante)
      * @param generada  ¿la simulación la produce? Los fines de E/S pasan por el PIC; el TIMER se registra en cada
-     *                  fin de quantum (el kernel lo resuelve sin IRQ); las excepciones y la int 0x80 quedan definidas
-     *                  en la IVT pero la simulación no las provoca
+     *                  fin de quantum (el kernel lo resuelve sin IRQ); la int 0x80 en cada pedido de E/S (momento a,
+     *                  la cuenta la CPU); las excepciones quedan definidas en la IVT pero la simulación no las provoca
      */
     public record Fila(TipoInterrupcion tipo, int vector, TipoInterrupcion.Clase clase, int irq, int prioridad,
                        Dispositivo dispositivo, String rutina, boolean generada) {
@@ -52,10 +52,15 @@ public final class TablaVectores {
             Dispositivo d = null;
             for (Dispositivo x : Dispositivo.values()) if (x.interrupcion == t) d = x;
             r.add(new Fila(t, t.vector, t.clase, hw ? ControladorInterrupciones.irq(t) : -1,
-                    hw ? hardware.indexOf(t) + 1 : 0, d, rutina(t), d != null || t == TipoInterrupcion.TIMER));
+                    hw ? hardware.indexOf(t) + 1 : 0, d, rutina(t), generada(t, d)));
         }
         r.sort(java.util.Comparator.comparingInt(Fila::vector));
         return List.copyOf(r);
+    }
+
+    /** Fines de E/S (dispositivo), TIMER (fin de quantum) e int 0x80 (pedido de E/S): las que produce la simulación. */
+    private static boolean generada(TipoInterrupcion t, Dispositivo d) {
+        return d != null || t == TipoInterrupcion.TIMER || t == TipoInterrupcion.LLAMADA_SISTEMA;
     }
 
     /** Qué hace la rutina de servicio de cada vector en este simulador. */

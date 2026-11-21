@@ -14,6 +14,10 @@ import pe.uni.so.configuracion.Maquina;
 import pe.uni.so.es.Dispositivo;
 import pe.uni.so.interrupciones.TipoInterrupcion;
 import pe.uni.so.motor.Instantanea;
+import pe.uni.so.motor.Kernel;
+import pe.uni.so.planificacion.Fcfs;
+import pe.uni.so.procesos.Pcb;
+import pe.uni.so.es.SolicitudES;
 import pe.uni.so.sesion.RegistroES;
 import pe.uni.so.sesion.RegistroES.Accion;
 import pe.uni.so.sesion.RegistroES.Servicio;
@@ -43,8 +47,10 @@ class VistaESInterrupcionesTest {
         TablaVectores.Fila fallo = TablaVectores.de(TipoInterrupcion.FALLO_PAGINA);
         assertTrue(fallo.sincrona());
         assertEquals(0, fallo.prioridad());
-        assertEquals(6, f.stream().filter(TablaVectores.Fila::generada).count());          // 5 dispositivos (PIC) + TIMER (fin de quantum)
+        assertEquals(7, f.stream().filter(TablaVectores.Fila::generada).count());          // 5 dispositivos (PIC) + TIMER + int 0x80
         assertTrue(timer.generada());
+        assertTrue(TablaVectores.de(TipoInterrupcion.LLAMADA_SISTEMA).generada());          // cada pedido de E/S (momento a)
+        assertFalse(TablaVectores.de(TipoInterrupcion.DIVISION_CERO).generada());
         assertTrue(f.stream().allMatch(x -> !x.rutina().isBlank()));
     }
 
@@ -82,7 +88,7 @@ class VistaESInterrupcionesTest {
         assertTrue(Dispositivo.values().length > 0 && r.servicios(Dispositivo.DISCO, fin).size() + r.servicios(Dispositivo.TECLADO, fin).size() > 0);
     }
 
-    @Test @DisplayName("[I3][I4] Bitácora de interrupciones: lo atendido suma lo que cuenta el PIC; levantada antes que atendida")
+    @Test @DisplayName("[I3][I4][E2] Bitácora de interrupciones: lo levantado y lo atendido suman lo que cuentan el PIC y la CPU; levantada antes que atendida")
     void bitacoraInterrupciones() {
         SesionSimulacion s = alFinal();
         int fin = s.vista().t();
@@ -92,9 +98,16 @@ class VistaESInterrupcionesTest {
         for (int i = 1; i < todos.size(); i++) assertTrue(todos.get(i - 1).t() >= todos.get(i).t());
         for (TipoInterrupcion x : TipoInterrupcion.values()) {
             int atendidas = todos.stream().filter(e -> e.tipo() == x && e.accion() == Accion.ATENDIDA).mapToInt(RegistroES.EventoInterrupcion::veces).sum();
-            int esperadas = x == TipoInterrupcion.TIMER ? s.finesDeQuantum(fin) : pic.atendidas(x);   // TIMER: un fin de quantum, sin PIC
+            int esperadas = switch (x) {
+                case TIMER -> s.finesDeQuantum(fin);                                        // un fin de quantum, sin PIC
+                case LLAMADA_SISTEMA -> s.vista().cpu().llamadasSistema();                  // síncrona: la cuenta la CPU
+                default -> pic.atendidas(x);
+            };
             assertEquals(esperadas, atendidas, x.toString());
             assertEquals(esperadas, s.registroES().atendidas(x, fin), x.toString());
+            int levantadas = todos.stream().filter(e -> e.tipo() == x && e.accion() == Accion.LEVANTADA).mapToInt(RegistroES.EventoInterrupcion::veces).sum();
+            assertEquals(x.clase == TipoInterrupcion.Clase.HARDWARE && x != TipoInterrupcion.TIMER ? pic.levantadas(x) : esperadas,
+                    levantadas, x.toString());
             int primeraLevantada = todos.stream().filter(e -> e.tipo() == x && e.accion() == Accion.LEVANTADA)
                     .mapToInt(RegistroES.EventoInterrupcion::t).min().orElse(Integer.MAX_VALUE);
             int primeraAtendida = todos.stream().filter(e -> e.tipo() == x && e.accion() == Accion.ATENDIDA)
@@ -106,16 +119,22 @@ class VistaESInterrupcionesTest {
         assertTrue(disco.stream().allMatch(e -> e.tipo() == TipoInterrupcion.DISCO));
         assertTrue(s.registroES().bitacora(50, Set.of(), 1000).stream().allMatch(e -> e.t() <= 50));
         assertEquals(5, s.registroES().bitacora(fin, Set.of(), 5).size());
+        assertTrue(s.registroES().atendidas(TipoInterrupcion.LLAMADA_SISTEMA, fin) > 0);   // el lote oficial pide E/S
     }
 
     private static Instantanea foto(int t, int pid, int restante, int trabajados, Map<TipoInterrupcion, Integer> atendidas) {
+        return foto(t, pid, restante, trabajados, atendidas, Map.of());
+    }
+
+    private static Instantanea foto(int t, int pid, int restante, int trabajados, Map<TipoInterrupcion, Integer> atendidas,
+                                    Map<TipoInterrupcion, Integer> levantadas) {
         List<Instantanea.FichaDispositivo> ds = new java.util.ArrayList<>();
         for (Dispositivo d : Dispositivo.values())
             ds.add(d == Dispositivo.DISCO && pid != Instantanea.NINGUNO
                     ? new Instantanea.FichaDispositivo(d, pe.uni.so.es.VelocidadDispositivo.NORMAL, List.of(pid), pid, restante,
                             pe.uni.so.es.SolicitudES.Operacion.LEER, trabajados)
                     : new Instantanea.FichaDispositivo(d, pe.uni.so.es.VelocidadDispositivo.NORMAL, List.of(), Instantanea.NINGUNO, -1, null, -1));
-        Instantanea.Pic pic = new Instantanea.Pic(List.of(), List.of(), List.of(), atendidas);
+        Instantanea.Pic pic = new Instantanea.Pic(List.of(), List.of(), List.of(), atendidas, levantadas);
         return new Instantanea(t, null, List.of(), List.of(), List.of(), ds, pic, null, List.of());
     }
 
@@ -130,11 +149,12 @@ class VistaESInterrupcionesTest {
         r.registrar(foto(1, NADIE, -1, -1, cero));
         r.registrar(foto(2, 5, 2, 1, cero));                               // P5 empieza: trabajó en [1, 2)
         r.registrar(foto(3, 5, 1, 2, cero));
-        r.registrar(foto(4, 5, 0, 3, cero));                               // termina en [3, 4): IRQ levantada
-        r.registrar(foto(5, 5, 0, 3, cero));                               // espera que la atiendan: no trabaja
-        r.registrar(foto(6, 7, 0, 1, Map.of(TipoInterrupcion.DISCO, 1)));  // atendida; P7 dura 1 tick y termina en [5, 6)
-        r.registrar(foto(7, 7, 0, 1, Map.of(TipoInterrupcion.DISCO, 1)));  // IRQ de P7 sigue pendiente
-        r.registrar(foto(8, 8, 0, 1, Map.of(TipoInterrupcion.DISCO, 2)));  // P8 también dura 1 tick
+        Map<TipoInterrupcion, Integer> una = Map.of(TipoInterrupcion.DISCO, 1), dos = Map.of(TipoInterrupcion.DISCO, 2);
+        r.registrar(foto(4, 5, 0, 3, cero, una));                          // termina en [3, 4): IRQ levantada
+        r.registrar(foto(5, 5, 0, 3, cero, una));                          // espera que la atiendan: no trabaja
+        r.registrar(foto(6, 7, 0, 1, una, dos));                           // atendida; P7 dura 1 tick y termina en [5, 6)
+        r.registrar(foto(7, 7, 0, 1, una, dos));                           // IRQ de P7 sigue pendiente
+        r.registrar(foto(8, 8, 0, 1, dos, Map.of(TipoInterrupcion.DISCO, 3)));   // P8 también dura 1 tick
         assertEquals(List.of(new Servicio(Dispositivo.DISCO, 5, LEER, 1, 4), new Servicio(Dispositivo.DISCO, 7, LEER, 5, 6),
                 new Servicio(Dispositivo.DISCO, 8, LEER, 7, 8)), r.servicios(Dispositivo.DISCO, 8));
         assertEquals(List.of(new Servicio(Dispositivo.DISCO, 5, LEER, 1, 3)), r.servicios(Dispositivo.DISCO, 3));   // recortado a t = 3
@@ -152,13 +172,56 @@ class VistaESInterrupcionesTest {
     void finForzadoSinTrabajo() {
         RegistroES r = new RegistroES();
         r.registrar(foto(0, NADIE, -1, -1, Map.of()));
-        r.registrar(foto(1, 9, 0, 0, Map.of()));                           // el usuario pulsó antes de que empezara
-        r.registrar(foto(2, 9, 0, 0, Map.of()));                           // IRQ enmascarada: sigue a la cabeza
-        r.registrar(foto(3, 4, 1, 1, Map.of(TipoInterrupcion.DISCO, 1)));  // atendida; P4 empieza de verdad
+        Map<TipoInterrupcion, Integer> una = Map.of(TipoInterrupcion.DISCO, 1);
+        r.registrar(foto(1, 9, 0, 0, Map.of(), una));                      // el usuario pulsó antes de que empezara
+        r.registrar(foto(2, 9, 0, 0, Map.of(), una));                      // IRQ enmascarada: sigue a la cabeza
+        r.registrar(foto(3, 4, 1, 1, una, una));                           // atendida; P4 empieza de verdad
         assertEquals(List.of(new Servicio(Dispositivo.DISCO, 4, LEER, 2, 3)), r.servicios(Dispositivo.DISCO, 3));
         assertEquals(1, r.resumen(Dispositivo.DISCO, 3).ticksOcupado());
         assertEquals(List.of(1), r.bitacora(3, Set.of(TipoInterrupcion.DISCO), 100).stream()
                 .filter(e -> e.accion() == Accion.LEVANTADA).map(RegistroES.EventoInterrupcion::t).toList());
+    }
+
+    @Test @DisplayName("[E9][E6] Tecla sin máscara: el kernel atiende la IRQ1 antes de la foto siguiente y la bitácora conserva el levantamiento")
+    void teclaAtendidaAntesDeLaFoto() {
+        Kernel k = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 2), new Pcb(2, 0, 5)));
+        RegistroES r = new RegistroES();
+        k.paso();                                                          // P1 ejecuta en t = 0
+        k.llamadaSistema(new SolicitudES(1, Dispositivo.TECLADO, SolicitudES.Operacion.LEER, 0x200, 1, 10));
+        k.paso();                                                          // t = 2: el teclado trabajó en [1, 2)
+        assertTrue(k.teclado('\n'));                                       // fin forzado: IRQ1 levantada
+        k.paso();                                                          // t = 3: atendida al inicio del tick
+        for (Instantanea f : k.historial()) r.registrar(f);
+        Instantanea ultima = k.instantanea();
+        assertEquals(Instantanea.NINGUNO, ultima.dispositivos().stream()
+                .filter(d -> d.dispositivo() == Dispositivo.TECLADO).findFirst().orElseThrow().atendiendo());   // servicio ya cerrado
+        List<RegistroES.EventoInterrupcion> teclado = r.bitacora(3, Set.of(TipoInterrupcion.TECLADO), 100);
+        assertEquals(List.of(new RegistroES.EventoInterrupcion(3, TipoInterrupcion.TECLADO, Accion.ATENDIDA, 1),
+                new RegistroES.EventoInterrupcion(3, TipoInterrupcion.TECLADO, Accion.LEVANTADA, 1)), teclado);
+        assertEquals(List.of(new Servicio(Dispositivo.TECLADO, 1, SolicitudES.Operacion.LEER, 1, 2)),
+                r.servicios(Dispositivo.TECLADO, 3));                      // la tecla no suma trabajo
+        assertEquals(1, r.atendidas(TipoInterrupcion.LLAMADA_SISTEMA, 3)); // la int 0x80 del pedido
+        assertEquals(1, ultima.cpu().llamadasSistema());
+    }
+
+    @Test @DisplayName("[E9][E6] Tecla con IRQ1 enmascarada: se levanta una vez y se atiende al quitar la máscara")
+    void teclaEnmascarada() {
+        Kernel k = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 2), new Pcb(2, 0, 8)));
+        RegistroES r = new RegistroES();
+        k.pic().enmascarar(TipoInterrupcion.TECLADO);
+        k.paso();
+        k.llamadaSistema(new SolicitudES(1, Dispositivo.TECLADO, SolicitudES.Operacion.LEER, 0x200, 1, 10));
+        k.paso();
+        assertTrue(k.teclado('\n'));
+        k.paso();                                                          // t = 3: sigue pendiente
+        k.paso();                                                          // t = 4
+        k.pic().desenmascarar(TipoInterrupcion.TECLADO);
+        k.paso();                                                          // t = 5: atendida
+        for (Instantanea f : k.historial()) r.registrar(f);
+        List<RegistroES.EventoInterrupcion> teclado = r.bitacora(5, Set.of(TipoInterrupcion.TECLADO), 100);
+        assertEquals(List.of(new RegistroES.EventoInterrupcion(5, TipoInterrupcion.TECLADO, Accion.ATENDIDA, 1),
+                new RegistroES.EventoInterrupcion(3, TipoInterrupcion.TECLADO, Accion.LEVANTADA, 1)), teclado);
+        assertEquals(1, r.resumen(Dispositivo.TECLADO, 5).ticksOcupado());   // solo [1, 2): la espera no es trabajo
     }
 
     @Test @DisplayName("[I1] IVT: pedir el vector de null es un error del simulador, no una excepción genérica")
