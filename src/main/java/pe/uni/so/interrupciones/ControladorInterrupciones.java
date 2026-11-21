@@ -31,6 +31,7 @@ public class ControladorInterrupciones {
     private final Set<TipoInterrupcion> imr = EnumSet.noneOf(TipoInterrupcion.class);
     private final Deque<TipoInterrupcion> isr = new ArrayDeque<>();
     private final Map<TipoInterrupcion, Integer> atendidas = new EnumMap<>(TipoInterrupcion.class);
+    private final Map<TipoInterrupcion, Integer> levantadas = new EnumMap<>(TipoInterrupcion.class);
 
     /** Línea IRQ de una interrupción de hardware: vector − 0x20 (convención x86). */
     public static int irq(TipoInterrupcion t) {
@@ -41,10 +42,15 @@ public class ControladorInterrupciones {
     /** Excepciones y llamadas al sistema: las provoca la propia instrucción. */
     public static boolean esSincrona(TipoInterrupcion t) { return t.clase != TipoInterrupcion.Clase.HARDWARE; }
 
-    /** Un dispositivo (o el reloj) levanta su línea. Si ya estaba pendiente, el bit sigue en 1. */
+    /**
+     * Un dispositivo (o el reloj) levanta su línea. Si ya estaba pendiente, el bit sigue en 1, pero
+     * el levantamiento se cuenta igual: [P16] la bitácora lo registra aunque la IRQ se atienda
+     * antes de la siguiente foto.
+     */
     public void levantar(TipoInterrupcion t) {
         exigirHardware(t, "es síncrona y la atiende la CPU directamente, no el PIC");
         irr.add(t);
+        levantadas.merge(t, 1, Integer::sum);
     }
 
     public void enmascarar(TipoInterrupcion t) { exigirHardware(t, "no se puede enmascarar"); imr.add(t); }
@@ -83,6 +89,7 @@ public class ControladorInterrupciones {
     public Optional<TipoInterrupcion> enServicio() { return Optional.ofNullable(isr.peek()); }
     public int anidamiento() { return isr.size(); }
     public int atendidas(TipoInterrupcion t) { return atendidas.getOrDefault(t, 0); }
+    public int levantadas(TipoInterrupcion t) { return levantadas.getOrDefault(t, 0); }
 
     /** [P16] IRR: pendientes, de mayor a menor prioridad. */
     public List<TipoInterrupcion> pendientes() { return irr.stream().sorted(POR_PRIORIDAD).toList(); }
@@ -92,6 +99,8 @@ public class ControladorInterrupciones {
     public List<TipoInterrupcion> pilaEnServicio() { return List.copyOf(isr); }
     /** [P16] Cuántas veces se atendió cada interrupción. */
     public Map<TipoInterrupcion, Integer> atendidas() { return Map.copyOf(atendidas); }
+    /** [P16] Cuántas veces se levantó cada línea (acumulado, aunque el bit del IRR ya estuviera en 1). */
+    public Map<TipoInterrupcion, Integer> levantadas() { return Map.copyOf(levantadas); }
 
     private static void exigirHardware(TipoInterrupcion t, String motivo) {
         if (esSincrona(t)) throw new EventoInvalidoException(t + " (0x" + Integer.toHexString(t.vector) + ") " + motivo);
