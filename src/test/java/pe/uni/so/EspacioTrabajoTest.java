@@ -286,13 +286,10 @@ class EspacioTrabajoTest {
         assertThrows(ParametroInvalidoException.class, () -> Propiedades.deMaquina(null));
     }
 
-    @Test @DisplayName("[G5][P16][M3] Explorador: la arena, «Procesos y Gantt» y «Memoria» están disponibles; las demás avisan que están en construcción")
+    @Test @DisplayName("[G5][P16][M3][E1][I1] Explorador: las cinco vistas están disponibles")
     void vistas() {
-        assertTrue(Vista.MAPA_ESTADOS.disponible);
-        assertTrue(Vista.PROCESOS.disponible);
-        assertTrue(Vista.MEMORIA.disponible);
-        assertEquals(Set.of(Vista.ENTRADA_SALIDA, Vista.INTERRUPCIONES),
-                Set.copyOf(java.util.Arrays.stream(Vista.values()).filter(v -> !v.disponible).toList()));
+        assertTrue(java.util.Arrays.stream(Vista.values()).allMatch(v -> v.disponible));
+        assertEquals(5, Vista.values().length);
         assertEquals("Arena del kernel", Vista.MAPA_ESTADOS.toString());
     }
 

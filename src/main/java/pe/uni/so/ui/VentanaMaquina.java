@@ -113,6 +113,8 @@ final class VentanaMaquina {
     private final StackPane contenedorVista = new StackPane();     // la arena o la vista de la vista elegida
     private final VistaProcesos vistaProcesos = new VistaProcesos(this::elegirProceso);
     private final VistaMemoria vistaMemoria = new VistaMemoria(this::elegirProceso);
+    private final VistaES vistaES = new VistaES(this::elegirProceso);
+    private final VistaInterrupciones vistaInterrupciones = new VistaInterrupciones();
     private final Node panelExplorador, panelPropiedades;
     private final BooleanProperty verExplorador = new SimpleBooleanProperty(true), verPropiedades = new SimpleBooleanProperty(true);
     private int seleccionado = Instantanea.NINGUNO;
@@ -505,6 +507,8 @@ final class VentanaMaquina {
         lienzo.mostrar(foto);
         if (selectorVista.getValue() == Vista.PROCESOS) vistaProcesos.mostrar(sesion.registro(), foto);
         else if (selectorVista.getValue() == Vista.MEMORIA) vistaMemoria.mostrar(foto);
+        else if (selectorVista.getValue() == Vista.ENTRADA_SALIDA) vistaES.mostrar(sesion.registroES(), foto);
+        else if (selectorVista.getValue() == Vista.INTERRUPCIONES) vistaInterrupciones.mostrar(sesion.registroES(), foto);
         for (Instantanea.Proceso p : foto.procesos()) {
             TreeItem<Nodo> item = itemsProceso.get(p.pid());
             if (item != null && item.getGraphic() instanceof Circle c) c.setFill(Color.web(p.color()));
@@ -583,6 +587,7 @@ final class VentanaMaquina {
         lienzo.seleccionar(pid);
         vistaProcesos.seleccionar(pid);
         vistaMemoria.seleccionar(pid);
+        vistaES.seleccionar(pid);
         mostrarPropiedades(sesion.vista());
         if (!actualizandoTabla) {
             actualizandoTabla = true;
@@ -635,6 +640,12 @@ final class VentanaMaquina {
         } else if (v == Vista.MEMORIA) {                               // [M1][M3][M4][M7] marcos, tablas y traductor
             contenedorVista.getChildren().setAll(vistaMemoria);
             vistaMemoria.mostrar(sesion.vista());
+        } else if (v == Vista.ENTRADA_SALIDA) {                        // [E1][E6] dispositivos, colas y su Gantt
+            contenedorVista.getChildren().setAll(vistaES);
+            vistaES.mostrar(sesion.registroES(), sesion.vista());
+        } else if (v == Vista.INTERRUPCIONES) {                        // [I1]–[I4] IVT, PIC y bitácora
+            contenedorVista.getChildren().setAll(vistaInterrupciones);
+            vistaInterrupciones.mostrar(sesion.registroES(), sesion.vista());
         } else if (!contenedorVista.getChildren().contains(lienzo)) contenedorVista.getChildren().setAll(lienzo);
         if (v == Vista.MAPA_ESTADOS) lienzo.ajustar();
     }

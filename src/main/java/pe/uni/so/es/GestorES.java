@@ -20,10 +20,11 @@ import pe.uni.so.procesos.Pcb;
  */
 public class GestorES {
 
-    /** Pedido en servicio en un dispositivo y ticks que le faltan. */
+    /** Pedido en servicio en un dispositivo, ticks que le faltan y ticks que el dispositivo ya trabajó en él. */
     private static final class Servicio {
         final Pcb proceso;
         int restante;
+        int trabajados;                                              // [P16] un fin forzado no suma trabajo
         Servicio(Pcb proceso, int duracion) { this.proceso = proceso; this.restante = duracion; }
     }
 
@@ -65,6 +66,7 @@ public class GestorES {
                 enServicio.put(d, s);
             }
             if (s.restante == 0) continue;                           // ya terminó; su IRQ espera (p. ej. enmascarada)
+            s.trabajados++;
             if (--s.restante == 0) {
                 pic.levantar(d.interrupcion);
                 terminados.add(d);
@@ -124,6 +126,12 @@ public class GestorES {
         Servicio s = enServicio.get(d);
         List<Pcb> cola = colas.cola(d);
         return s != null && !cola.isEmpty() && s.proceso == cola.get(0) ? s.proceso : null;
+    }
+
+    /** [P16] Ticks que el dispositivo ya trabajó en el pedido en servicio (un fin forzado no los aumenta), o -1. */
+    public int trabajados(Dispositivo d) {
+        Servicio s = enServicio.get(d);
+        return s == null ? -1 : s.trabajados;
     }
 
     /** Ticks que le faltan al pedido en servicio del dispositivo, o -1 si no atiende ninguno. */

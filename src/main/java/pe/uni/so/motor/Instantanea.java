@@ -100,9 +100,10 @@ public record Instantanea(int t, Cpu cpu, List<Integer> nuevos, List<Integer> li
      * @param quantum      quantum vigente desde el último despacho (0: sin límite)
      * @param usado        ticks que lleva el proceso en CPU desde su despacho
      * @param velocidad    instrucciones que ejecuta la CPU por tick
+     * @param llamadasSistema [E2][P16] llamadas al sistema int 0x80 acumuladas (síncronas: no pasan por el PIC)
      */
     public record Cpu(Modo modo, int enCpu, int ejecuto, String politica, int quantum, int usado, double velocidad,
-                      int despachos, int desalojos, double tiempoDespacho) {
+                      int despachos, int desalojos, double tiempoDespacho, int llamadasSistema) {
         public boolean libre() { return enCpu == NINGUNO; }
     }
 
@@ -111,15 +112,26 @@ public record Instantanea(int t, Cpu cpu, List<Integer> nuevos, List<Integer> li
      * La IVT es fija y está en {@link TipoInterrupcion}.
      */
     public record Pic(List<TipoInterrupcion> pendientes, List<TipoInterrupcion> enmascaradas,
-                      List<TipoInterrupcion> enServicio, Map<TipoInterrupcion, Integer> atendidas) {
+                      List<TipoInterrupcion> enServicio, Map<TipoInterrupcion, Integer> atendidas,
+                      Map<TipoInterrupcion, Integer> levantadas) {
         public Pic {
             pendientes = List.copyOf(pendientes);
             enmascaradas = List.copyOf(enmascaradas);
             enServicio = List.copyOf(enServicio);
             atendidas = Map.copyOf(atendidas);
+            levantadas = Map.copyOf(levantadas);
+        }
+
+        /** Sin contador de levantamientos (fotos armadas a mano). */
+        public Pic(List<TipoInterrupcion> pendientes, List<TipoInterrupcion> enmascaradas,
+                   List<TipoInterrupcion> enServicio, Map<TipoInterrupcion, Integer> atendidas) {
+            this(pendientes, enmascaradas, enServicio, atendidas, Map.of());
         }
 
         public int atendidas(TipoInterrupcion t) { return atendidas.getOrDefault(t, 0); }
+
+        /** [P16] Levantamientos acumulados de la línea (cuenta también los que se atendieron antes de esta foto). */
+        public int levantadas(TipoInterrupcion t) { return levantadas.getOrDefault(t, 0); }
     }
 
     /**
@@ -129,9 +141,10 @@ public record Instantanea(int t, Cpu cpu, List<Integer> nuevos, List<Integer> li
      * @param atendiendo PID del pedido en servicio, o {@link #NINGUNO}
      * @param restante   ticks que le faltan al pedido en servicio, o -1 si no atiende ninguno
      * @param operacion  operación del pedido en servicio, o null
+     * @param trabajados [P16] ticks que el dispositivo ya trabajó en el pedido en servicio (un fin forzado no los suma), o -1
      */
     public record FichaDispositivo(Dispositivo dispositivo, VelocidadDispositivo velocidad, List<Integer> cola,
-                                   int atendiendo, int restante, SolicitudES.Operacion operacion) {
+                                   int atendiendo, int restante, SolicitudES.Operacion operacion, int trabajados) {
         public FichaDispositivo { cola = List.copyOf(cola); }
 
         public int irq() { return dispositivo.interrupcion.vector - 0x20; }
