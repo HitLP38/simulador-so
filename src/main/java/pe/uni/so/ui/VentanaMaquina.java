@@ -215,10 +215,11 @@ final class VentanaMaquina {
         MenuItem finalMenu = item("Hasta el final", "Fin", this::alternarHastaElFinal);
         MenuItem ingresarMenu = item("Ingresar proceso…", "P", this::ingresarProceso);
         MenuItem generarMenu = item("Generar N procesos…", "G", this::generarProcesos);
+        MenuItem compararMenu = item("Comparar configuraciones…", "C", this::compararConfiguraciones);
         ingresarMenu.disableProperty().bind(ingresar.disabledProperty());
         generarMenu.disableProperty().bind(generar.disabledProperty());
         Menu simulacion = new Menu("Simulación", null, reproducirMenu, avanzarMenu, retrocederMenu, new SeparatorMenuItem(),
-                reiniciarMenu, finalMenu, new SeparatorMenuItem(), ingresarMenu, generarMenu);
+                reiniciarMenu, finalMenu, new SeparatorMenuItem(), ingresarMenu, generarMenu, new SeparatorMenuItem(), compararMenu);
 
         CheckMenuItem explorador = new CheckMenuItem("Explorador");
         explorador.selectedProperty().bindBidirectional(verExplorador);
@@ -502,6 +503,12 @@ final class VentanaMaquina {
         IngresoDialogo.generar(ventana).ifPresent(n -> accion(() -> sesion.generar(n)));
     }
 
+    /** [P17][M8][G1] «Comparar configuraciones»: pausa y abre el comparador con la máquina y la carga abiertas. */
+    private void compararConfiguraciones() {
+        pausar();
+        ComparadorDialogo.abrir(ventana, maquina, plan);
+    }
+
     private void mostrar(Instantanea foto) {
         sincronizarExplorador(foto);
         lienzo.mostrar(foto);
@@ -687,6 +694,7 @@ final class VentanaMaquina {
             case F -> lienzo.ajustar();
             case P -> ingresarProceso();
             case G -> generarProcesos();
+            case C -> compararConfiguraciones();
             default -> { return; }
         }
         e.consume();

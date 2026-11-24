@@ -98,7 +98,8 @@ final class IngresoDialogo {
         });
         Spinner<Integer> s = new Spinner<>(f);
         s.setEditable(true);
-        s.getEditor().setTextFormatter(new TextFormatter<String>(c -> c.getControlNewText().matches("\\d{0,9}") ? c : null));
+        String digitos = "\\d{0," + String.valueOf(max).length() + "}";      // tantas cifras como el máximo (semilla: 10)
+        s.getEditor().setTextFormatter(new TextFormatter<String>(c -> c.getControlNewText().matches(digitos) ? c : null));
         s.focusedProperty().addListener((o, a, enfocado) -> { if (!enfocado) valor(s); });
         s.setPrefWidth(140);
         return s;

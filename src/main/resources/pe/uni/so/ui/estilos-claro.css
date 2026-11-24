@@ -80,3 +80,6 @@
 .tabla-pcb .table-row-cell:odd { -fx-background-color: #f8fafc; }
 .tabla-pcb .table-row-cell:selected { -fx-background-color: #cffafe; }
 .tabla-pcb .table-cell { -fx-text-fill: #1e293b; }
+
+/* Comparador de configuraciones */
+.tabla-comparador .table-cell.celda-mejor { -fx-background-color: rgba(47, 168, 79, 0.22); -fx-text-fill: #166534; }
