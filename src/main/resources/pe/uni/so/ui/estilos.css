@@ -149,3 +149,7 @@
 .panel-eventos .tarjeta { -fx-min-width: 200; }
 .dispositivo-ocupado { -fx-text-fill: #F28C28; -fx-font-weight: bold; }
 .split-pane:vertical > .split-pane-divider { -fx-padding: 1 0 1 0; }
+
+/* Comparador de configuraciones (P17, M8, G1) */
+.tabla-comparador .table-cell.celda-mejor { -fx-background-color: rgba(47, 168, 79, 0.28); -fx-font-weight: bold; -fx-text-fill: #86efac; }
+.tabla-comparador .table-row-cell.fila-incompleta { -fx-opacity: 0.55; }

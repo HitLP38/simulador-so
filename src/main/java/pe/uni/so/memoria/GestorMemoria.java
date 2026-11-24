@@ -418,8 +418,10 @@ public class GestorMemoria {
 
     /** [I6] Foto del estado de la memoria en el instante t. */
     public Muestra muestra(int t) {
-        return new Muestra(t, mapa.libres(), mapa.total() - mapa.libres(), mapa.huecos().size(),
-                mapa.mayorHueco(), desperdicioInterno(), residentes.size());
+        List<MapaBits.Hueco> huecos = mapa.huecos();                  // una sola pasada por el mapa de bits
+        int libres = huecos.stream().mapToInt(MapaBits.Hueco::tamano).sum();
+        int mayor = huecos.stream().mapToInt(MapaBits.Hueco::tamano).max().orElse(0);
+        return new Muestra(t, libres, mapa.total() - libres, huecos.size(), mayor, desperdicioInterno(), residentes.size());
     }
 
     public MapaBits mapa() { return mapa; }

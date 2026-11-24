@@ -93,7 +93,9 @@ public class Kernel {
     private final List<ObservadorTick> observadores = new ArrayList<>();
     private int capacidadHistorial = CAPACIDAD_HISTORIAL;
     private Instantanea ultima;
-    private int llamadasSistema;                           // [E2][P16] int 0x80 acumuladas, para la bitácora
+    private boolean conFotos = true;                       // [P17][M8] el comparador las apaga para correr rápido
+    private int llamadasSistema;
+    private int finesQuantum;                              // [P17] interrupciones del TIMER por fin de quantum, acumuladas                           // [E2][P16] int 0x80 acumuladas, para la bitácora
     private int inicioTick;                                // primer evento de la bitácora que aún no sale en una foto
     private Pcb ejecuto;                                   // quien usó la CPU en el tick (celda del Gantt)
     private final Set<Integer> expropiadosTick = new HashSet<>(), finQuantumTick = new HashSet<>();
@@ -207,6 +209,10 @@ public class Kernel {
         }
         t++;
         emitirPedidoDebido();
+        if (!conFotos) {                                   // [P17][M8] modo rápido: sin foto ni avisos
+            inicioTick = bitacora.size();
+            return;
+        }
         Instantanea foto = capturar();                     // [P16] foto al cerrar el tick
         guardar(foto);
         avisar(foto);
@@ -247,8 +253,14 @@ public class Kernel {
      * ninguna llegada futura (un proceso que ya llegó y no cabe tampoco cuenta, porque la memoria
      * la retienen procesos bloqueados o suspendidos que aquí nadie despierta).
      */
-    public void ejecutarTodo() {
-        while (!terminado()) {
+    public void ejecutarTodo() { ejecutarHasta(Integer.MAX_VALUE); }
+
+    /**
+     * [P17][M8] Como {@link #ejecutarTodo()}, pero se detiene al llegar al instante {@code limite}
+     * (tope de seguridad del comparador). Devuelve true si terminaron todos.
+     */
+    public boolean ejecutarHasta(int limite) {
+        while (!terminado() && t < limite) {
             momentoD();                                    // intenta admitir antes de decidir
             boolean ociosa = colas.enCpu() == null && listosResidentes().isEmpty();
             boolean llegadaFutura = !porLlegar.isEmpty() && porLlegar.get(0).llegada > t;
@@ -256,6 +268,7 @@ public class Kernel {
                 throw new EventoInvalidoException("t=" + t + ": nadie puede ejecutar; quedan procesos bloqueados, suspendidos o sin memoria");
             paso();
         }
+        return terminado();
     }
 
     // ---------------------------------------------------------------- los 5 momentos
@@ -393,7 +406,7 @@ public class Kernel {
 
         if (actual != null && usado >= quantumDespacho) {              // (b) timer
             if (candidatos.isEmpty()) usado = 0;                        // solo: sigue con el mismo quantum
-            else { cambiar = true; finQuantumTick.add(actual.pid); momentoB(actual, "agotó su quantum de " + quantumDespacho); }
+            else { cambiar = true; finQuantumTick.add(actual.pid); finesQuantum++; momentoB(actual, "agotó su quantum de " + quantumDespacho); }
         } else if (actual != null && revisarExpropiacion && !candidatos.isEmpty()) {   // (c)(d)
             Pcb candidato = politica.elegir(candidatos);
             if (politica.expropia(candidato, actual)) {
@@ -544,6 +557,8 @@ public class Kernel {
     public List<Evento> eventos(Momento m) { return bitacora.stream().filter(e -> e.momento() == m).toList(); }
     public String gantt() { return gantt.toString().trim(); }
     public int desalojos() { return desalojos; }
+    /** [P17] Fines de quantum acumulados (cada uno devuelve el proceso a listos, momento b). */
+    public int finesDeQuantum() { return finesQuantum; }
     public Modo modo() { return modo; }
     /** [I6] Serie temporal de la memoria: una muestra por tick (vacía si no hay gestor de memoria). */
     public List<GestorMemoria.Muestra> historialMemoria() { return List.copyOf(historialMemoria); }
@@ -577,6 +592,16 @@ public class Kernel {
         capacidadHistorial = capacidad;
         while (historial.size() > capacidadHistorial) historial.remove(0);
     }
+
+    /**
+     * [P17][M8] Modo rápido para el comparador y la prueba de estrés: desde ahora los ticks no toman
+     * foto ni avisan a los observadores, así una corrida de 1000 procesos tarda segundos. La última
+     * foto queda en el instante en que se apagaron. No tiene vuelta atrás: es para corridas sin vista.
+     */
+    public void apagarFotos() { conFotos = false; }
+
+    /** [M8] Gestor de memoria de la máquina (comparaciones de búsqueda, fallos, fragmentación), si tiene. */
+    public Optional<GestorMemoria> memoria() { return Optional.ofNullable(gestorMemoriaOpcional()); }
 
     /** [P16] Suscribe una vista: recibirá una foto al cerrar cada tick. */
     public void observar(ObservadorTick o) {
