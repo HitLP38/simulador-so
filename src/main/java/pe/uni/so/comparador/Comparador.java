@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import pe.uni.so.configuracion.Configuracion;
@@ -136,12 +137,11 @@ public final class Comparador {
         double externa = muestras.stream().mapToInt(GestorMemoria.Muestra::fragmentacionExterna).average().orElse(0);
         int externaMax = muestras.stream().mapToInt(GestorMemoria.Muestra::fragmentacionExterna).max().orElse(0);
         double interna = muestras.stream().mapToLong(GestorMemoria.Muestra::desperdicioInterno).average().orElse(0) / 1024.0;
-        int esperaron = 0;
-        long ticksEnNuevo = 0;
-        for (Kernel.Evento ev : k.eventos(Momento.D)) {           // admisión: t del evento − llegada
-            int demora = ev.t() - ev.proceso().llegada;
-            if (demora > 0) { esperaron++; ticksEnNuevo += demora; }
-        }
+        // Solo las esperas por falta de memoria: las del grado de multiprogramación y las de quien espera detrás
+        // de otro (orden de llegada) no dependen de la estrategia y quedan fuera.
+        Map<Integer, Integer> porMemoria = k.esperasPorMemoria();
+        int esperaron = porMemoria.size();
+        long ticksEnNuevo = porMemoria.values().stream().mapToLong(Integer::longValue).sum();
         double esperaMemoria = esperaron == 0 ? 0 : (double) ticksEnNuevo / esperaron;
 
         return new Resultado(serie, politica, estrategia, todos.size(), terminados.size(), t,

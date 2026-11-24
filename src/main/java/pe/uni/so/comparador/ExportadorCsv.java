@@ -5,8 +5,10 @@ import java.io.Writer;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,14 +72,29 @@ public final class ExportadorCsv {
         return sb.toString();
     }
 
-    /** Escribe el CSV (con BOM), reemplazando el archivo si ya existe. */
+    /**
+     * Escribe el CSV (con BOM). Primero escribe un temporal en la misma carpeta y solo cuando se cerró bien
+     * reemplaza el archivo (de forma atómica si el sistema de archivos lo permite): si algo falla, el CSV
+     * anterior queda intacto y el temporal se borra.
+     */
     public void escribir(Path archivo, Parametros p, List<Resultado> resultados) throws IOException {
         String contenido = texto(p, resultados);
-        Path carpeta = archivo.toAbsolutePath().getParent();
+        Path destino = archivo.toAbsolutePath();
+        Path carpeta = destino.getParent();
         if (carpeta != null) Files.createDirectories(carpeta);
-        try (Writer w = Files.newBufferedWriter(archivo, StandardCharsets.UTF_8)) {
-            w.write(BOM);
-            w.write(contenido);
+        Path temporal = Files.createTempFile(carpeta, ".comparacion-", ".csv.tmp");
+        try {
+            try (Writer w = Files.newBufferedWriter(temporal, StandardCharsets.UTF_8)) {
+                w.write(BOM);
+                w.write(contenido);
+            }
+            try {
+                Files.move(temporal, destino, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temporal, destino, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporal);                    // tras un move correcto ya no existe
         }
     }
 

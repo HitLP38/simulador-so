@@ -124,7 +124,7 @@ final class ComparadorDialogo {
         n.getValueFactory().setValue(OpcionesComparacion.nInicial(planMaquina));
         semilla.getValueFactory().setValue((int) Math.min(Integer.MAX_VALUE, OpcionesComparacion.semillaInicial(planMaquina)));
         n.setPrefWidth(100);
-        semilla.setPrefWidth(110);
+        semilla.setPrefWidth(135);                                     // caben las 10 cifras de Integer.MAX_VALUE
         n.disableProperty().bind(cargaMaquina.selectedProperty());
         semilla.disableProperty().bind(cargaMaquina.selectedProperty());
         Label nl = new Label("N"), sl = new Label("semilla");
@@ -254,13 +254,16 @@ final class ComparadorDialogo {
         return b;
     }
 
+    /** Habilita «Correr» según las casillas y, si la tabla está vacía y no hay un mensaje final, muestra el resumen. */
     private void actualizarEstado() {
         if (tarea != null && tarea.isRunning()) return;
-        List<Politica> ps = marcadas(politicas);
-        List<Estrategia> es = marcadas(estrategias);
-        correr.setDisable(ps.isEmpty() && es.isEmpty());
+        habilitarCorrer();
         if (filas.isEmpty()) estado.setText(correr.isDisable() ? "Marca al menos una política o una estrategia"
-                : OpcionesComparacion.resumen(ps, es) + " con la misma carga");
+                : OpcionesComparacion.resumen(marcadas(politicas), marcadas(estrategias)) + " con la misma carga");
+    }
+
+    private void habilitarCorrer() {
+        correr.setDisable(marcadas(politicas).isEmpty() && marcadas(estrategias).isEmpty());
     }
 
     private static <E extends Enum<E>> List<E> marcadas(Map<E, CheckBox> casillas) {
@@ -295,7 +298,12 @@ final class ComparadorDialogo {
                 return Comparador.correr(escenarios, carga, r -> {
                     if (isCancelled()) return;                          // la corrida que terminó después de «Cancelar» no entra
                     hechas[0]++;
-                    Platform.runLater(() -> { filas.add(r); tabla.refresh(); });   // la mejor celda puede cambiar con cada fila
+                    Task<List<Resultado>> esta = this;
+                    Platform.runLater(() -> {
+                        if (esta != tarea || esta.isCancelled()) return;   // fila de una comparación anterior o cancelada
+                        filas.add(r);
+                        tabla.refresh();                                    // la mejor celda puede cambiar con cada fila
+                    });
                     updateProgress(hechas[0], total);
                     updateMessage(hechas[0] < total ? "Corriendo " + (hechas[0] + 1) + " de " + total + "…" : "Terminando…");
                 }, this::isCancelled);
@@ -331,7 +339,7 @@ final class ComparadorDialogo {
             enMarcha(false);
             estado.setText(mensaje.get());
             exportar.setDisable(filas.isEmpty());
-            actualizarEstado();
+            habilitarCorrer();                                          // sin pisar el mensaje final («Cancelado: 0 de …»)
             tabla.refresh();
         });
     }

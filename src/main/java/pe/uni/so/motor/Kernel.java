@@ -70,6 +70,7 @@ public class Kernel {
 
     private final PoliticaPlanificacion politica;
     private final PlanificadorLargoPlazo largoPlazo;       // null: memoria sin límite
+    private final Map<Integer, Integer> ticksPorMemoria = new HashMap<>();   // [M8] pid → ticks sin entrar por memoria
     private final Colas colas = new Colas();
     private final Despachador despachador;
     private final double instruccionesPorTick;             // [G5] velocidad de la CPU
@@ -368,7 +369,10 @@ public class Kernel {
         while (!porLlegar.isEmpty() && porLlegar.get(0).llegada <= t) {
             Pcb p = porLlegar.get(0);
             if (largoPlazo == null) colas.admitir(p);
-            else if (!largoPlazo.admitir(p, colas)) break;    // orden de llegada: evita la inanición
+            else if (!largoPlazo.admitir(p, colas)) {
+                if (!largoPlazo.cabeEnMemoria(p)) ticksPorMemoria.merge(p.pid, 1, Integer::sum);   // [M8] no entró por memoria
+                break;                                     // orden de llegada: evita la inanición
+            }
             porLlegar.remove(0);
             registrar(t, Momento.D, p, "admitido, pasa a Listo");
             revisarExpropiacion = true;
@@ -559,6 +563,13 @@ public class Kernel {
     public int desalojos() { return desalojos; }
     /** [P17] Fines de quantum acumulados (cada uno devuelve el proceso a listos, momento b). */
     public int finesDeQuantum() { return finesQuantum; }
+
+    /**
+     * [M8] Ticks en que cada proceso intentó entrar en el momento d y no lo hizo por falta de memoria
+     * (pid → ticks). No cuenta las esperas por el grado de multiprogramación ni las de quien espera
+     * detrás de otro por el orden de llegada.
+     */
+    public Map<Integer, Integer> esperasPorMemoria() { return Collections.unmodifiableMap(ticksPorMemoria); }
     public Modo modo() { return modo; }
     /** [I6] Serie temporal de la memoria: una muestra por tick (vacía si no hay gestor de memoria). */
     public List<GestorMemoria.Muestra> historialMemoria() { return List.copyOf(historialMemoria); }

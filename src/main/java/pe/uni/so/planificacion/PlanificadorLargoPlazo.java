@@ -47,8 +47,16 @@ public class PlanificadorLargoPlazo {
 
     public PlanificadorLargoPlazo(GestorMemoria gestor) { this(gestor, Integer.MAX_VALUE); }
 
-    /** ¿Cabe el proceso ahora mismo, completamente residente? */
+    /** ¿Cabe el proceso ahora mismo, completamente residente? (memoria y grado de multiprogramación) */
     public boolean cabe(Pcb p) {
+        return cabeEnMemoria(p) && residentes.size() < gradoMaximo;
+    }
+
+    /**
+     * [M8] ¿Hay memoria para el proceso ahora mismo, sin mirar el grado de multiprogramación? Sirve para
+     * distinguir si un proceso que no entra espera por falta de memoria o por el grado.
+     */
+    public boolean cabeEnMemoria(Pcb p) {
         if (gestor != null) {
             EspacioProceso e = p.espacio();
             if (e == null) throw new EventoInvalidoException(p + " no tiene espacio de proceso para pedir marcos");
@@ -57,11 +65,11 @@ public class PlanificadorLargoPlazo {
                         + gestor.mmu().bloque() + " B)");
             if (!gestor.podriaCaber(p.pid, e))
                 throw new ParametroInvalidoException(p + " necesita " + gestor.marcosNecesarios(p.pid, e) + " marcos y la memoria tiene " + memoriaTotal);
-            return gestor.cabe(p.pid, e) && residentes.size() < gradoMaximo;
+            return gestor.cabe(p.pid, e);
         }
         if (p.memoria > memoriaTotal)
             throw new ParametroInvalidoException(p + " pide " + p.memoria + " y la memoria total es " + memoriaTotal);
-        return p.memoria <= libre() && residentes.size() < gradoMaximo;
+        return p.memoria <= libre();
     }
 
     /** Admisión (momento d): si cabe, reserva su memoria y lo pasa a Listo; si no, queda en Nuevo. */

@@ -23,7 +23,7 @@ public enum Columna {
     FRAG_EXTERNA_MAX("Frag. externa máx. (marcos)", 0, true, Resultado.Serie.MEMORIA, r -> r.fragExternaMaxima()),
     FRAG_INTERNA("Frag. interna media (KiB)", 2, true, Resultado.Serie.MEMORIA, Resultado::fragInternaMediaKib),
     ESPERARON_MEMORIA("Esperaron memoria", 0, true, Resultado.Serie.MEMORIA, r -> r.esperaronMemoria()),
-    ESPERA_MEMORIA("Espera en Nuevo (media)", 2, true, Resultado.Serie.MEMORIA, Resultado::esperaMemoriaMedia),
+    ESPERA_MEMORIA("Espera por memoria (media)", 2, true, Resultado.Serie.MEMORIA, Resultado::esperaMemoriaMedia),
     MILISEGUNDOS("Tiempo real (ms)", 0, true, null, r -> r.milisegundos());
 
     public final String etiqueta;
@@ -48,18 +48,19 @@ public enum Columna {
 
     /**
      * El mejor valor de la columna entre las corridas completas de la serie, o NaN si no hay
-     * ninguna o si todas empatan (marcar a todas no dice nada).
+     * ninguna o si dos o más comparten ese mejor valor (solo se marca un ganador único).
      */
     public double mejor(List<Resultado> resultados, Resultado.Serie s) {
         if (!seCompara(s)) return Double.NaN;
-        double mejor = Double.NaN, peor = Double.NaN;
+        double mejor = Double.NaN;
+        int empatan = 0;
         for (Resultado r : resultados) {
             if (r.serie() != s || !r.completa()) continue;
             double v = valor(r);
-            if (Double.isNaN(mejor) || (menorEsMejor ? v < mejor : v > mejor)) mejor = v;
-            if (Double.isNaN(peor) || (menorEsMejor ? v > peor : v < peor)) peor = v;
+            if (Double.isNaN(mejor) || (menorEsMejor ? v < mejor - 1e-9 : v > mejor + 1e-9)) { mejor = v; empatan = 1; }
+            else if (Math.abs(v - mejor) < 1e-9) empatan++;
         }
-        return Double.isNaN(mejor) || Math.abs(mejor - peor) < 1e-9 ? Double.NaN : mejor;
+        return empatan == 1 ? mejor : Double.NaN;
     }
 
     /** ¿Esta celda es la mejor de su columna en su serie? */

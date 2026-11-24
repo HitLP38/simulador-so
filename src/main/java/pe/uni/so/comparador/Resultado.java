@@ -22,8 +22,8 @@ package pe.uni.so.comparador;
  * @param fragExternaMedia    marcos libres fuera del hueco mayor, promedio por tick
  * @param fragExternaMaxima   el peor valor de la fragmentación externa
  * @param fragInternaMediaKib desperdicio dentro de las páginas asignadas, promedio por tick (KiB)
- * @param esperaronMemoria    procesos que tuvieron que esperar en Nuevo porque no cabían
- * @param esperaMemoriaMedia  ticks en Nuevo de los que esperaron, promedio
+ * @param esperaronMemoria    procesos que no pudieron entrar al menos un tick por falta de memoria (no por el grado)
+ * @param esperaMemoriaMedia  ticks sin entrar por falta de memoria de los que esperaron, promedio
  * @param milisegundos        lo que tardó la corrida en la computadora real
  * @param nota                vacía si terminó bien; si no, por qué se detuvo
  */

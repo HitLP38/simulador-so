@@ -13,6 +13,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
+import pe.uni.so.procesos.Estado;
+import pe.uni.so.planificacion.Fcfs;
+import pe.uni.so.planificacion.PlanificadorLargoPlazo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import pe.uni.so.comparador.Columna;
@@ -124,14 +127,14 @@ class ComparadorTest {
         }
     }
 
-    @Test @DisplayName("[M8] RAM chica: los procesos esperan memoria en Nuevo y peor ajuste fragmenta más que primer ajuste")
+    @Test @DisplayName("[M8] RAM chica: peor ajuste fragmenta más que primer ajuste; la espera por el grado no cuenta como espera de memoria")
     void ramChica() {
         Configuracion chica = new Configuracion(Ram.MIB_128, Pagina.KIB_64, Configuracion.Cpu.GHZ_1, Politica.ROUND_ROBIN, 4, 0.1, 10,
                 Estrategia.PRIMER_AJUSTE, Carga.TOTAL, Reemplazo.LRU, Configuracion.dispositivos(VelocidadDispositivo.NORMAL), 42);
         List<Resultado> rs = Comparador.correr(Comparador.escenarios(chica, Set.of(), EnumSet.allOf(Estrategia.class)),
                 PlanCarga.aleatoria(200, 3), null, null);
         assertTrue(rs.stream().allMatch(Resultado::completa));
-        assertTrue(rs.get(0).esperaronMemoria() > 0 && rs.get(0).esperaMemoriaMedia() > 0);
+        assertEquals(0, rs.get(0).esperaronMemoria());                   // esperan en Nuevo, pero por el grado (10), no por memoria
         assertTrue(rs.get(2).fragExternaMedia() > rs.get(0).fragExternaMedia());
         Configuracion demanda = new Configuracion(Ram.MIB_128, Pagina.KIB_64, Configuracion.Cpu.GHZ_1, Politica.ROUND_ROBIN, 4, 0.1, 10,
                 Estrategia.PRIMER_AJUSTE, Carga.BAJO_DEMANDA, Reemplazo.LRU, Configuracion.dispositivos(VelocidadDispositivo.NORMAL), 42);
@@ -171,7 +174,7 @@ class ComparadorTest {
         assertEquals(2, avisos.get());
     }
 
-    @Test @DisplayName("[Kernel] ejecutarHasta se detiene en el límite; sin fotos la última foto queda donde se apagaron")
+    @Test @DisplayName("[P17][P16] Kernel: ejecutarHasta se detiene en el límite; sin fotos la última foto queda donde se apagaron")
     void kernelHastaYSinFotos() {
         Kernel k = BASE.crearKernel(PlanCarga.loteOficial().procesos(BASE.pagina().bytes));
         k.paso();
@@ -183,12 +186,37 @@ class ComparadorTest {
         assertEquals(793, k.t());
     }
 
+    @Test @DisplayName("[M8] Esperar memoria ≠ esperar por el grado: con RAM de sobra y grado 1 nadie espera memoria")
+    void esperasPorGradoNoCuentan() {
+        Configuracion grado1 = new Configuracion(BASE.ram(), BASE.pagina(), BASE.cpu(), BASE.politica(), BASE.quantum(), BASE.costoDespacho(),
+                Configuracion.GRADO_MINIMO, BASE.estrategia(), BASE.carga(), BASE.reemplazo(), BASE.dispositivos(), BASE.semilla());
+        Resultado r = Comparador.correr(new Escenario(Resultado.Serie.MEMORIA, grado1), PlanCarga.aleatoria(60, 5));
+        assertTrue(r.completa(), r.nota());
+        assertEquals(0, r.esperaronMemoria());                              // esperaron, pero por el grado
+        assertEquals(0.0, r.esperaMemoriaMedia());
+        Kernel k = grado1.crearKernel(PlanCarga.aleatoria(60, 5).procesos(grado1.pagina().bytes));
+        assertTrue(k.ejecutarHasta(Integer.MAX_VALUE));
+        assertTrue(k.esperasPorMemoria().isEmpty());
+    }
+
+    @Test @DisplayName("[M8][P16] Kernel: cuenta los ticks en que un proceso no entra por memoria, no los que no entra por el grado")
+    void esperasPorMemoriaEnElKernel() {
+        Kernel memoria = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 2, 0, 8), new Pcb(2, 0, 2, 0, 8)), new PlanificadorLargoPlazo(10));
+        memoria.ejecutarTodo();
+        assertFalse(memoria.esperasPorMemoria().containsKey(1));
+        assertTrue(memoria.esperasPorMemoria().get(2) > 0);               // P2 espera a que P1 libere sus 8 de 10
+        Kernel grado = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 2, 0, 8), new Pcb(2, 0, 2, 0, 8)), new PlanificadorLargoPlazo(100, 1));
+        grado.ejecutarTodo();
+        assertTrue(grado.esperasPorMemoria().isEmpty());                 // P2 también espera, pero por el grado 1
+        assertEquals(2, grado.procesos().stream().filter(p -> p.estado() == Estado.TERMINADO).count());
+    }
+
     private static Resultado fila(Resultado.Serie serie, String nombre, double espera, long comparaciones, String nota) {
         return new Resultado(serie, nombre, nombre, 5, nota.isEmpty() ? 5 : 2, 100, espera, 1, 2, 50, 1, 3, 4, 0, comparaciones,
                 0, 0, 0, 0, 0, 10, nota);
     }
 
-    @Test @DisplayName("[G1] Mejor celda: por serie, solo entre corridas completas y sin marcar empates")
+    @Test @DisplayName("[G1] Mejor celda: por serie, solo entre corridas completas y solo si el ganador es único")
     void mejorCelda() {
         Resultado a = fila(Resultado.Serie.PLANIFICACION, "A", 3.0, 9, "");
         Resultado b = fila(Resultado.Serie.PLANIFICACION, "B", 1.5, 9, "");
@@ -202,12 +230,17 @@ class ComparadorTest {
         assertFalse(Columna.ESPERA.esMejor(m, todas));                     // espera se marca solo en planificación
         assertTrue(Columna.COMPARACIONES.esMejor(m, todas));
         assertFalse(Columna.COMPARACIONES.esMejor(a, todas));             // empate A = B: no se marca
+        Resultado d = fila(Resultado.Serie.PLANIFICACION, "D", 1.5, 9, "");   // B y D comparten la mejor espera (1,5 · 1,5 · 3)
+        List<Resultado> empate = List.of(a, b, d);
+        assertTrue(Double.isNaN(Columna.ESPERA.mejor(empate, Resultado.Serie.PLANIFICACION)));
+        assertFalse(Columna.ESPERA.esMejor(b, empate));
+        assertFalse(Columna.ESPERA.esMejor(d, empate));
         assertTrue(Double.isNaN(Columna.CAMBIOS.mejor(todas, Resultado.Serie.PLANIFICACION)));
         assertFalse(Columna.MILISEGUNDOS.seCompara(Resultado.Serie.MEMORIA));
         assertFalse(Columna.USO_CPU.menorEsMejor);
     }
 
-    @Test @DisplayName("[G1] CSV: BOM, «;», coma decimal, parámetros, una fila por corrida y celdas protegidas")
+    @Test @DisplayName("[G1] CSV: BOM, «;», coma decimal, parámetros, una fila por corrida, celdas protegidas y reemplazo sin temporales")
     void csv(@TempDir Path dir) throws Exception {
         Resultado a = fila(Resultado.Serie.PLANIFICACION, "FCFS", 12.345, 9, "");
         Resultado b = fila(Resultado.Serie.PLANIFICACION, "SJF", 1.5, 9, "Se detuvo; ver \"tope\"");
@@ -230,6 +263,11 @@ class ComparadorTest {
         assertEquals(9, lineas.length);
         assertEquals("1.50", new ExportadorCsv('.').texto(new ExportadorCsv.Parametros("M", "c", 1, 1), List.of(b))
                 .split("\r\n")[7].split(";")[6]);
+        csv.escribir(archivo, new ExportadorCsv.Parametros("Otra", "c", 7, 1), List.of(a));     // reemplaza el anterior
+        assertTrue(new String(Files.readAllBytes(archivo), StandardCharsets.UTF_8).contains("Máquina;Otra"));
+        try (var dentro = Files.list(archivo.getParent())) {
+            assertEquals(List.of("comparacion.csv"), dentro.map(x -> x.getFileName().toString()).toList());   // sin temporales
+        }
         assertThrows(ParametroInvalidoException.class, () -> new ExportadorCsv(';'));
         assertThrows(ParametroInvalidoException.class, () -> csv.texto(new ExportadorCsv.Parametros("M", "c", 1, 1), List.of()));
     }
