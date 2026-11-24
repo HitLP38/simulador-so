@@ -71,6 +71,7 @@ public class Kernel {
     private final PoliticaPlanificacion politica;
     private final PlanificadorLargoPlazo largoPlazo;       // null: memoria sin límite
     private final Map<Integer, Integer> ticksPorMemoria = new HashMap<>();   // [M8] pid → ticks sin entrar por memoria
+    private int ultimoRechazoPid = -1, ultimoRechazoT = -1;                  // [M8] último rechazo contado (pid, t)
     private final Colas colas = new Colas();
     private final Despachador despachador;
     private final double instruccionesPorTick;             // [G5] velocidad de la CPU
@@ -370,7 +371,7 @@ public class Kernel {
             Pcb p = porLlegar.get(0);
             if (largoPlazo == null) colas.admitir(p);
             else if (!largoPlazo.admitir(p, colas)) {
-                if (!largoPlazo.cabeEnMemoria(p)) ticksPorMemoria.merge(p.pid, 1, Integer::sum);   // [M8] no entró por memoria
+                contarEsperaPorMemoria(p);                 // [M8] no entró por memoria
                 break;                                     // orden de llegada: evita la inanición
             }
             porLlegar.remove(0);
@@ -378,6 +379,18 @@ public class Kernel {
             revisarExpropiacion = true;
         }
         esperanAdmision = porLlegar.stream().filter(p -> p.llegada <= t).map(p -> p.pid).toList();   // [P16] intentaron y no entraron
+    }
+
+    /**
+     * [M8] Suma un tick de espera por memoria, como máximo uno por proceso e instante: {@link #ejecutarHasta}
+     * llama a {@code momentoD} antes de {@link #paso()}, que lo vuelve a llamar en el mismo t.
+     */
+    private void contarEsperaPorMemoria(Pcb p) {
+        if (p.pid == ultimoRechazoPid && t == ultimoRechazoT) return;
+        if (largoPlazo.cabeEnMemoria(p)) return;               // no entró por el grado, no por memoria
+        ultimoRechazoPid = p.pid;
+        ultimoRechazoT = t;
+        ticksPorMemoria.merge(p.pid, 1, Integer::sum);
     }
 
     /** (e) El proceso en ejecución terminó al final del tick: libera la CPU y su memoria. */

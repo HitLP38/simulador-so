@@ -199,12 +199,16 @@ class ComparadorTest {
         assertTrue(k.esperasPorMemoria().isEmpty());
     }
 
-    @Test @DisplayName("[M8][P16] Kernel: cuenta los ticks en que un proceso no entra por memoria, no los que no entra por el grado")
+    @Test @DisplayName("[M8][P16] Kernel: cuenta una vez por instante los ticks sin entrar por memoria (no por el grado), con ejecutarTodo o con paso")
     void esperasPorMemoriaEnElKernel() {
+        // P2 espera a que P1 libere sus 8 de 10: t = 0 y t = 1, exactamente 2 ticks, se corra como se corra.
         Kernel memoria = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 2, 0, 8), new Pcb(2, 0, 2, 0, 8)), new PlanificadorLargoPlazo(10));
-        memoria.ejecutarTodo();
+        memoria.ejecutarTodo();                                           // ejecutarHasta: momentoD y luego paso en el mismo t
         assertFalse(memoria.esperasPorMemoria().containsKey(1));
-        assertTrue(memoria.esperasPorMemoria().get(2) > 0);               // P2 espera a que P1 libere sus 8 de 10
+        assertEquals(2, memoria.esperasPorMemoria().get(2));
+        Kernel aPasos = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 2, 0, 8), new Pcb(2, 0, 2, 0, 8)), new PlanificadorLargoPlazo(10));
+        while (!aPasos.terminado()) aPasos.paso();
+        assertEquals(2, aPasos.esperasPorMemoria().get(2));
         Kernel grado = new Kernel(new Fcfs(), List.of(new Pcb(1, 0, 2, 0, 8), new Pcb(2, 0, 2, 0, 8)), new PlanificadorLargoPlazo(100, 1));
         grado.ejecutarTodo();
         assertTrue(grado.esperasPorMemoria().isEmpty());                 // P2 también espera, pero por el grado 1
