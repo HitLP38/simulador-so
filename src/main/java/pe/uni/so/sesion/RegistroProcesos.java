@@ -42,9 +42,12 @@ public final class RegistroProcesos {
         public boolean terminado() { return fin >= 0; }
     }
 
-    /** Métricas de la corrida: una fila por proceso y promedios de los terminados (NaN si no hay). */
+    /**
+     * Métricas de la corrida: una fila por proceso y promedios de los terminados (NaN si no hay).
+     * {@code conError}: [P9] terminados con un código de error (E01–E03 por excepción, E04 por el usuario).
+     */
     public record Metricas(List<FilaMetricas> filas, int terminados, double retornoMedio, double esperaMedia,
-                           double respuestaMedia, double usoCpu) {
+                           double respuestaMedia, double usoCpu, int conError) {
         public Metricas { filas = List.copyOf(filas); }
     }
 
@@ -145,7 +148,7 @@ public final class RegistroProcesos {
         int t = f.t();
         List<FilaMetricas> filas = new ArrayList<>(f.procesos().size());
         long sumaRetorno = 0, sumaEspera = 0, sumaRespuesta = 0;
-        int terminados = 0;
+        int terminados = 0, conError = 0;
         for (Instantanea.Proceso p : f.procesos()) {
             int fin = -1;
             for (Tramo x : tramos(p.pid(), t)) if (x.estado() == Estado.TERMINADO) fin = x.desde();
@@ -160,6 +163,7 @@ public final class RegistroProcesos {
                 sumaRetorno += retorno;
                 sumaEspera += p.espera();
                 sumaRespuesta += Math.max(0, respuesta);
+                if (p.error() != null) conError++;
             }
         }
         double n = terminados;
@@ -168,6 +172,6 @@ public final class RegistroProcesos {
         return new Metricas(filas, terminados,
                 terminados == 0 ? Double.NaN : sumaRetorno / n,
                 terminados == 0 ? Double.NaN : sumaEspera / n,
-                terminados == 0 ? Double.NaN : sumaRespuesta / n, uso);
+                terminados == 0 ? Double.NaN : sumaRespuesta / n, uso, conError);
     }
 }

@@ -102,6 +102,7 @@ final class VentanaMaquina {
     private final Button reiniciar = boton("⏮", "Volver a t = 0 (Inicio)");
     private final Button alFinal = boton("⏭", "Simular hasta que terminen todos (Fin)");
     private final Button ingresar = boton("＋ Proceso", "Ingresar un proceso (usuario) en el instante simulado (P)");
+    private final BooleanProperty sinError = new SimpleBooleanProperty(true);   // [P9] ¿«Provocar error» deshabilitado?
     private final Button generar = boton("＋ N", "Generar N procesos aleatorios (SO) desde el tick siguiente (G)");
     private final PlanCarga plan;
     private TreeItem<Nodo> nodoProcesos;
@@ -215,11 +216,13 @@ final class VentanaMaquina {
         MenuItem finalMenu = item("Hasta el final", "Fin", this::alternarHastaElFinal);
         MenuItem ingresarMenu = item("Ingresar proceso…", "P", this::ingresarProceso);
         MenuItem generarMenu = item("Generar N procesos…", "G", this::generarProcesos);
+        MenuItem errorMenu = item("Provocar error…", "E", this::provocarError);
+        errorMenu.disableProperty().bind(sinError);
         MenuItem compararMenu = item("Comparar configuraciones…", "C", this::compararConfiguraciones);
         ingresarMenu.disableProperty().bind(ingresar.disabledProperty());
         generarMenu.disableProperty().bind(generar.disabledProperty());
         Menu simulacion = new Menu("Simulación", null, reproducirMenu, avanzarMenu, retrocederMenu, new SeparatorMenuItem(),
-                reiniciarMenu, finalMenu, new SeparatorMenuItem(), ingresarMenu, generarMenu, new SeparatorMenuItem(), compararMenu);
+                reiniciarMenu, finalMenu, new SeparatorMenuItem(), ingresarMenu, generarMenu, errorMenu, new SeparatorMenuItem(), compararMenu);
 
         CheckMenuItem explorador = new CheckMenuItem("Explorador");
         explorador.selectedProperty().bindBidirectional(verExplorador);
@@ -503,6 +506,14 @@ final class VentanaMaquina {
         IngresoDialogo.generar(ventana).ifPresent(n -> accion(() -> sesion.generar(n)));
     }
 
+    /** [P9] «Provocar error» (demo): el proceso en CPU falla en su próxima instrucción con el código elegido. */
+    private void provocarError() {
+        if (sinError.get()) return;
+        pausar();
+        int pid = sesion.vista().cpu().enCpu();
+        IngresoDialogo.provocarError(ventana, pid).ifPresent(c -> accion(() -> sesion.provocarError(c)));
+    }
+
     /** [P17][M8][G1] «Comparar configuraciones»: pausa y abre el comparador con la máquina y la carga abiertas. */
     private void compararConfiguraciones() {
         pausar();
@@ -539,6 +550,7 @@ final class VentanaMaquina {
         pasoAtras.setDisable(foto.t() == 0);
         ingresar.setDisable(!sesion.puedeIngresar());
         generar.setDisable(!sesion.puedeIngresar());
+        sinError.set(!sesion.puedeProvocarError());
         if (!puede && !reproductor.reproduciendo()) reproducir.setDisable(true);
         else reproducir.setDisable(false);
     }
@@ -695,6 +707,7 @@ final class VentanaMaquina {
             case P -> ingresarProceso();
             case G -> generarProcesos();
             case C -> compararConfiguraciones();
+            case E -> provocarError();
             default -> { return; }
         }
         e.consume();

@@ -32,6 +32,9 @@ public class Pcb {
     private int inicio = -1, fin = -1, espera = 0, cpu = 0, bloqueado = 0;
     private int pedidosES, interrupciones;   // [E3] pedidos de E/S pendientes y llamadas/IRQ propias
     private CodigoError error;              // [P9] null si terminó normalmente
+    private int falloEn;                    // [P9] instrucción (1 a burst) en la que ocurre la excepción; 0 si no falla
+    private CodigoError codigoFallo;        // [P9] código de esa excepción
+    private boolean excepcion;              // [P9] la excepción ocurrió en el último tick
     private List<PedidoES> planES = List.of();   // [E2] pedidos de E/S planificados, en orden
     private int siguientePedido;
     private double avance;                  // [G5] fracción de instrucción hecha por una CPU lenta (contexto)
@@ -80,9 +83,15 @@ public class Pcb {
     public int ejecutarTick(double instruccionesPorTick) {
         if (!(instruccionesPorTick > 0) || Double.isInfinite(instruccionesPorTick))
             throw new ParametroInvalidoException("La velocidad de la CPU debe ser > 0 instrucciones por tick");
+        excepcion = false;
         avance += instruccionesPorTick;
         int n = (int) Math.min(Math.min(Math.floor(avance), restante), hastaSiguientePedido());   // una CPU rápida no se salta un pedido
         avance -= Math.floor(avance);   // lo que no alcanzó a usar en este tick (por un pedido de E/S) se pierde; solo queda la fracción
+        if (falloEn > 0 && ejecutadas() + n >= falloEn) {   // [P9] la instrucción falloEn no se completa: excepción
+            n = falloEn - 1 - ejecutadas();
+            excepcion = true;
+            avance = 0;
+        }
         usarCpu(n);
         if (restante == 0) avance = 0;
         return n;
@@ -126,6 +135,32 @@ public class Pcb {
         cancelacionPendiente = true;
     }
     public boolean cancelacionPendiente() { return cancelacionPendiente; }
+
+    /**
+     * [P9][P10] El módulo de errores decide que el proceso falle al ejecutar su instrucción
+     * {@code instruccion} (1 a burst) con el código dado (E01–E03): completa las anteriores y esa
+     * instrucción provoca la excepción. Un fallo nuevo reemplaza al anterior (la inyección manual
+     * adelanta el del sorteo).
+     */
+    public void planificarFallo(int instruccion, CodigoError codigo) {
+        if (codigo == null || codigo.excepcion == null)
+            throw new ParametroInvalidoException(this + ": el fallo debe ser E01, E02 o E03 (" + codigo + ")");
+        if (estado == Estado.TERMINADO) throw new EventoInvalidoException(this + " ya terminó");
+        if (instruccion <= ejecutadas() || instruccion > burst)
+            throw new ParametroInvalidoException(this + ": la instrucción del fallo debe estar entre " + (ejecutadas() + 1)
+                    + " y " + burst + " (" + instruccion + ")");
+        falloEn = instruccion;
+        codigoFallo = codigo;
+    }
+
+    /** [P9] Instrucción en la que fallará (1 a burst), o 0 si no tiene un fallo planificado. */
+    public int falloEn() { return falloEn; }
+
+    /** [P9] Código del fallo planificado, o null. */
+    public CodigoError codigoFallo() { return codigoFallo; }
+
+    /** [P9] ¿Su última instrucción provocó la excepción? (la consulta el kernel al cerrar el tick) */
+    public boolean excepcion() { return excepcion; }
 
     /** [P9] Registra el código con el que el proceso termina por error. */
     public void registrarError(CodigoError c) { error = c; cancelacionPendiente = false; }

@@ -4,6 +4,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,6 +31,7 @@ import pe.uni.so.planificacion.PoliticaPlanificacion;
 import pe.uni.so.procesos.CodigoError;
 import pe.uni.so.procesos.Colas;
 import pe.uni.so.procesos.Estado;
+import pe.uni.so.procesos.ModuloErrores;
 import pe.uni.so.procesos.Pcb;
 import pe.uni.so.procesos.PedidoES;
 
@@ -96,8 +98,10 @@ public class Kernel {
     private int capacidadHistorial = CAPACIDAD_HISTORIAL;
     private Instantanea ultima;
     private boolean conFotos = true;                       // [P17][M8] el comparador las apaga para correr rápido
-    private int llamadasSistema;
-    private int finesQuantum;                              // [P17] interrupciones del TIMER por fin de quantum, acumuladas                           // [E2][P16] int 0x80 acumuladas, para la bitácora
+    private int llamadasSistema;                           // [E2][P16] int 0x80 acumuladas, para la bitácora
+    private int finesQuantum;                              // [P17] interrupciones del TIMER por fin de quantum, acumuladas
+    private ModuloErrores moduloErrores;                   // [P9][P10] null: ningún proceso falla solo
+    private final Map<TipoInterrupcion, Integer> excepciones = new EnumMap<>(TipoInterrupcion.class);   // [P9] por vector
     private int inicioTick;                                // primer evento de la bitácora que aún no sale en una foto
     private Pcb ejecuto;                                   // quien usó la CPU en el tick (celda del Gantt)
     private final Set<Integer> expropiadosTick = new HashSet<>(), finQuantumTick = new HashSet<>();
@@ -150,6 +154,44 @@ public class Kernel {
     public Kernel(PoliticaPlanificacion politica, List<Pcb> procesos) { this(politica, procesos, null); }
 
     /**
+     * [P9][P10] Activa el módulo de errores: cada proceso que el módulo elija (ecuación 7, 0,5 % del
+     * acumulado) falla en su instrucción sorteada. Se aplica a los procesos que aún no ejecutaron y a
+     * los que se ingresen después. Lo llama la configuración de la máquina al crear el kernel.
+     */
+    public void activarErrores(ModuloErrores modulo) {
+        if (modulo == null) throw new ParametroInvalidoException("Falta el módulo de errores");
+        if (moduloErrores != null) throw new EventoInvalidoException("El módulo de errores ya está activo");
+        moduloErrores = modulo;
+        for (Pcb p : procesos) planificarFallo(p);
+    }
+
+    private void planificarFallo(Pcb p) {
+        if (moduloErrores == null || p.estado() == Estado.TERMINADO || p.falloEn() > 0) return;
+        moduloErrores.fallo(p).ifPresent(f -> {
+            if (f.instruccion() > p.ejecutadas()) p.planificarFallo(f.instruccion(), f.codigo());
+        });
+    }
+
+    /**
+     * [P9] Inyección manual para la demo: el proceso en ejecución falla al ejecutar su próxima
+     * instrucción con el código dado (E01–E03), en el próximo tick en que use la CPU. Es una acción
+     * manual (no sale de la semilla): para volver a verla hay que repetirla en el mismo tick.
+     *
+     * @return el proceso que fallará
+     */
+    public Pcb provocarError(CodigoError codigo) {
+        Pcb p = exigirEnCpu("provocar un error");
+        p.planificarFallo(p.ejecutadas() + 1, codigo);     // valida el código y que aún le queden instrucciones
+        return p;
+    }
+
+    /** [P9][I1] Excepciones de la CPU atendidas, por vector (0x00, 0x06, 0x0D). */
+    public Map<TipoInterrupcion, Integer> excepciones() { return Collections.unmodifiableMap(excepciones); }
+
+    /** [P9][P10] Cuántos procesos terminaron por una excepción (E01–E03). */
+    public int abortados() { return excepciones.values().stream().mapToInt(Integer::intValue).sum(); }
+
+    /**
      * [P14][P18] Ingresa procesos con la simulación en curso, entre dos ticks. Entran a la cola
      * de llegadas en orden de llegada (tras los que llegan al mismo instante) y los admite el
      * momento d como a cualquier otro. Bajo demanda reciben su cuota con
@@ -174,6 +216,7 @@ public class Kernel {
         }
         for (Pcb p : nuevos) {
             if (conCuotas) gm.agregarCuota(p.pid, p.espacio());
+            planificarFallo(p);                                  // [P10] el 0,5 % cuenta también a los ingresados
             procesos.add(p);
             int i = porLlegar.size();
             while (i > 0 && porLlegar.get(i - 1).llegada > p.llegada) i--;
@@ -402,6 +445,23 @@ public class Kernel {
         registrar(t + 1, Momento.E, p, "terminó y libera la CPU");
     }
 
+    /**
+     * (e) [P9] La instrucción del proceso provocó una excepción (síncrona: no pasa por el PIC). La
+     * CPU entra al kernel por su vector y la rutina de servicio lo aborta al final del tick: termina
+     * con su código en la PCB y libera la CPU y la memoria, como un fin normal.
+     */
+    private void abortar(Pcb p) {
+        CodigoError c = p.codigoFallo();
+        p.marcarFin(t + 1);
+        p.registrarError(c);
+        colas.terminarEnCpu();
+        modo = Modo.KERNEL;                                // la excepción entra al kernel por su vector
+        if (largoPlazo != null && largoPlazo.residente(p)) largoPlazo.liberar(p);
+        excepciones.merge(c.excepcion, 1, Integer::sum);
+        registrar(t + 1, Momento.E, p, String.format("excepción 0x%02X en su instrucción %d: el módulo de errores lo aborta con %s (%s)",
+                c.excepcion.vector, p.falloEn(), c.name(), c.descripcion.toLowerCase()));
+    }
+
     /** (e) [E9][P9] Al volver a la CPU recibe la señal CANCELAR: termina con E04 en el instante t. */
     private void terminarCancelado(Pcb p) {
         p.marcarInicio(t);
@@ -456,7 +516,8 @@ public class Kernel {
         actual.ejecutarTick(instruccionesPorTick);         // [G5] lo que alcanza a ejecutar la CPU en este tick
         usado++;
         actual.fijarQuantumRestante(quantumDespacho == Integer.MAX_VALUE ? 0 : quantumDespacho - usado);
-        if (actual.restante() == 0) momentoE(actual);
+        if (actual.excepcion()) abortar(actual);           // [P9] la instrucción provocó una excepción
+        else if (actual.restante() == 0) momentoE(actual);
         else if (actual.pedidoDebido().isPresent()) pedidoAlTerminarTick = actual;   // [E2] su E/S se pide al cerrar el tick
     }
 
