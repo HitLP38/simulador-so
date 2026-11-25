@@ -92,7 +92,8 @@ final class VistaInterrupciones extends SplitPane {
         Label nota = new Label("«—» en Atendidas: la simulación no genera esa interrupción. Prioridad del PIC: menor IRQ = más prioridad. Las excepciones y la int 0x80 son síncronas: "
                 + "las provoca la instrucción y la CPU las atiende sin pasar por el PIC. En esta simulación los fines de E/S "
                 + "pasan por el PIC, el TIMER se cuenta en cada fin de quantum (el kernel lo resuelve sin IRQ, por eso no se "
-                + "ve en el IRR) y la int 0x80 en cada pedido de E/S.");
+                + "ve en el IRR), la int 0x80 en cada pedido de E/S y las excepciones 0x00, 0x06 y 0x0D cuando el módulo de "
+                + "errores aborta un proceso (P9).");
         nota.setWrapText(true);
         nota.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
         nota.getStyleClass().add("subtitulo");

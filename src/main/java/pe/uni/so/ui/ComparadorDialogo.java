@@ -208,9 +208,9 @@ final class ComparadorDialogo {
     private TableColumn<Resultado, Resultado> numero(Columna c) {
         TableColumn<Resultado, Resultado> col = new TableColumn<>();
         Label cabecera = new Label(c.etiqueta);                          // cabecera con ayuda: qué valor es mejor
-        cabecera.setTooltip(new Tooltip(c.etiqueta + (c == Columna.MILISEGUNDOS ? " (no se compara)"
+        cabecera.setTooltip(new Tooltip(c.etiqueta + (!c.comparable() ? " (no se compara)"
                 : c.menorEsMejor ? " — menor es mejor" : " — mayor es mejor")
-                + (c.serie == null ? "" : "\nSe resalta en la serie de " + c.serie.etiqueta.toLowerCase())));
+                + (!c.comparable() || c.serie == null ? "" : "\nSe resalta en la serie de " + c.serie.etiqueta.toLowerCase())));
         col.setGraphic(cabecera);
         col.setCellValueFactory(d -> new javafx.beans.property.ReadOnlyObjectWrapper<>(d.getValue()));
         col.setPrefWidth(Math.max(80, c.etiqueta.length() * 8.2 + 16));

@@ -11,6 +11,7 @@ import pe.uni.so.es.SolicitudES;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.interrupciones.TipoInterrupcion;
 import pe.uni.so.motor.Instantanea;
+import pe.uni.so.procesos.Estado;
 
 /**
  * [E1][E6][I3][I4][P16] Registro de la corrida para las vistas «Entrada/salida» e «Interrupciones»:
@@ -114,6 +115,16 @@ public final class RegistroES {
             }
             llamadasAnterior = f.cpu().llamadasSistema();
         }
+        // [P9] Excepciones (0x00, 0x06, 0x0D): síncronas como la int 0x80, la instrucción las provoca y la rutina
+        // de servicio aborta al proceso en el mismo tick. Se ven en los procesos que pasan a Terminado con E01–E03.
+        Map<TipoInterrupcion, Integer> excepciones = new EnumMap<>(TipoInterrupcion.class);
+        for (Instantanea.Proceso p : f.procesos())
+            if (p.estado() == Estado.TERMINADO && p.anterior() != Estado.TERMINADO && p.error() != null && p.error().excepcion != null)
+                excepciones.merge(p.error().excepcion, 1, Integer::sum);
+        excepciones.forEach((x, n) -> {
+            eventos.add(new EventoInterrupcion(t, x, Accion.LEVANTADA, n));
+            eventos.add(new EventoInterrupcion(t, x, Accion.ATENDIDA, n));
+        });
         if (pic != null) {
             for (TipoInterrupcion x : TipoInterrupcion.values()) {
                 int delta = pic.atendidas(x) - (picAnterior == null ? 0 : picAnterior.atendidas(x));
@@ -143,7 +154,7 @@ public final class RegistroES {
         return new ResumenDispositivo(d, lista.size(), ocupado, t <= 0 ? 0 : 100.0 * ocupado / t, max);   // t ticks transcurridos
     }
 
-    /** Interrupciones del tipo atendidas hasta el instante t (las de E/S por el PIC; el TIMER por fin de quantum; la int 0x80 por la CPU). */
+    /** Interrupciones del tipo atendidas hasta el instante t (las de E/S por el PIC; el TIMER por fin de quantum; la int 0x80 y las excepciones por la CPU). */
     public int atendidas(TipoInterrupcion tipo, int t) {
         int n = 0;
         for (EventoInterrupcion e : eventos) if (e.t() <= t && e.tipo() == tipo && e.accion() == Accion.ATENDIDA) n += e.veces();

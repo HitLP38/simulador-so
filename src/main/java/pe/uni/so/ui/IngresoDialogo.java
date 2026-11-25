@@ -6,13 +6,17 @@ import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.RadioButton;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextFormatter;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
 import javafx.util.StringConverter;
+import pe.uni.so.procesos.CodigoError;
 import pe.uni.so.procesos.CreadorProcesos;
 import pe.uni.so.sesion.PlanCarga;
 import pe.uni.so.sesion.SesionSimulacion;
@@ -61,14 +65,43 @@ final class IngresoDialogo {
         return d.showAndWait();
     }
 
+    /**
+     * [P9] «Provocar error»: elige el código (E01–E03) con el que fallará el proceso {@code pid}, que
+     * tiene la CPU, al ejecutar su próxima instrucción.
+     */
+    static Optional<CodigoError> provocarError(Window duenio, int pid) {
+        Dialog<CodigoError> d = base(duenio, "Provocar error", "P" + pid + " tiene la CPU: su próxima instrucción provocará la excepción "
+                + "elegida y el módulo de errores lo abortará con ese código (queda en su PCB y en las estadísticas).", "Provocar");
+        ToggleGroup grupo = new ToggleGroup();
+        VBox opciones = new VBox(8);
+        for (CodigoError c : CodigoError.DE_EXCEPCION) {
+            RadioButton r = new RadioButton(c.etiqueta());
+            r.setUserData(c);
+            r.setToggleGroup(grupo);
+            opciones.getChildren().add(r);
+        }
+        grupo.selectToggle(grupo.getToggles().get(0));
+        opciones.setPadding(new Insets(12));
+        d.getDialogPane().setContent(opciones);
+        d.getDialogPane().setPrefWidth(460);                    // la nota se ajusta en vez de ensanchar el diálogo
+        d.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);   // alto según la nota ya ajustada: los botones no tapan E03
+        ButtonType ok = d.getDialogPane().getButtonTypes().get(0);
+        d.setResultConverter(b -> b == ok && grupo.getSelectedToggle() != null ? (CodigoError) grupo.getSelectedToggle().getUserData() : null);
+        return d.showAndWait();
+    }
+
     private static <T> Dialog<T> base(Window duenio, String titulo, String nota) {
+        return base(duenio, titulo, nota, "Ingresar");
+    }
+
+    private static <T> Dialog<T> base(Window duenio, String titulo, String nota, String textoAceptar) {
         Dialog<T> d = new Dialog<>();
         d.initOwner(duenio);
         d.setTitle(titulo);
         d.setHeaderText(null);
         d.getDialogPane().getStylesheets().setAll(App.estilosActuales());
         d.getDialogPane().getStyleClass().add("formulario");
-        ButtonType aceptar = new ButtonType("Ingresar", ButtonBar.ButtonData.OK_DONE);
+        ButtonType aceptar = new ButtonType(textoAceptar, ButtonBar.ButtonData.OK_DONE);
         d.getDialogPane().getButtonTypes().addAll(aceptar, new ButtonType("Cancelar", ButtonBar.ButtonData.CANCEL_CLOSE));
         d.getDialogPane().lookupButton(aceptar).getStyleClass().add("boton-primario");
         Label l = new Label(nota);

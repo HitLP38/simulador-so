@@ -6,6 +6,7 @@ import pe.uni.so.es.Dispositivo;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.interrupciones.ControladorInterrupciones;
 import pe.uni.so.interrupciones.TipoInterrupcion;
+import pe.uni.so.procesos.CodigoError;
 
 /**
  * [I1][I2][P2] Tabla de vectores de interrupción (IVT) del simulador, lista para mostrar: vector,
@@ -21,7 +22,8 @@ public final class TablaVectores {
      * @param prioridad 1 = la más alta entre las de hardware (menor IRQ); 0 si es síncrona (se atiende al instante)
      * @param generada  ¿la simulación la produce? Los fines de E/S pasan por el PIC; el TIMER se registra en cada
      *                  fin de quantum (el kernel lo resuelve sin IRQ); la int 0x80 en cada pedido de E/S (momento a,
-     *                  la cuenta la CPU); las excepciones quedan definidas en la IVT pero la simulación no las provoca
+     *                  la cuenta la CPU); las excepciones 0x00, 0x06 y 0x0D, en cada proceso que el módulo de errores aborta
+     *                  (P9); el fallo de página solo con los accesos manuales a memoria
      */
     public record Fila(TipoInterrupcion tipo, int vector, TipoInterrupcion.Clase clase, int irq, int prioridad,
                        Dispositivo dispositivo, String rutina, boolean generada) {
@@ -58,9 +60,14 @@ public final class TablaVectores {
         return List.copyOf(r);
     }
 
-    /** Fines de E/S (dispositivo), TIMER (fin de quantum) e int 0x80 (pedido de E/S): las que produce la simulación. */
+    /**
+     * Fines de E/S (dispositivo), TIMER (fin de quantum), int 0x80 (pedido de E/S) y las excepciones del módulo de
+     * errores (E01–E03): las que produce la simulación.
+     */
     private static boolean generada(TipoInterrupcion t, Dispositivo d) {
-        return d != null || t == TipoInterrupcion.TIMER || t == TipoInterrupcion.LLAMADA_SISTEMA;
+        if (d != null || t == TipoInterrupcion.TIMER || t == TipoInterrupcion.LLAMADA_SISTEMA) return true;
+        for (CodigoError c : CodigoError.DE_EXCEPCION) if (c.excepcion == t) return true;
+        return false;
     }
 
     /** Qué hace la rutina de servicio de cada vector en este simulador. */

@@ -222,7 +222,7 @@ final class VistaProcesos extends SplitPane {
         try { tablaMetricas.getItems().setAll(m.filas()); } finally { actualizando = false; }
         promedios.setText(m.terminados() == 0
                 ? "Aún no termina ningún proceso · uso de CPU " + String.format("%.1f %%", m.usoCpu())
-                : String.format("Terminados: %d de %d · retorno medio %.2f · espera media %.2f · respuesta media %.2f · uso de CPU %.1f %%",
+                : String.format("Terminados: %d de %d" + (m.conError() > 0 ? " (" + m.conError() + " con error)" : "") + " · retorno medio %.2f · espera media %.2f · respuesta media %.2f · uso de CPU %.1f %%",
                         m.terminados(), m.filas().size(), m.retornoMedio(), m.esperaMedia(), m.respuestaMedia(), m.usoCpu()));
     }
 

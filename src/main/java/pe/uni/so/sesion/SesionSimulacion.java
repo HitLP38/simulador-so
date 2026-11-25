@@ -10,6 +10,7 @@ import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
 import pe.uni.so.motor.Instantanea;
 import pe.uni.so.motor.Kernel;
+import pe.uni.so.procesos.CodigoError;
 import pe.uni.so.procesos.CreadorProcesos;
 import pe.uni.so.procesos.Estado;
 import pe.uni.so.procesos.Pcb;
@@ -61,6 +62,15 @@ public class SesionSimulacion {
     public record Ingreso(int t, Origen origen, int llegada, int burst, long texto, int prioridad, int cantidad) {}
 
     private final List<Ingreso> ingresos = new ArrayList<>();
+
+    /**
+     * [P9] Un error provocado a mano en el instante {@code t} sobre el proceso que tenía la CPU: falla
+     * en su próxima instrucción con {@code codigo}. Se guarda para repetirlo al re-simular.
+     */
+    public record ErrorProvocado(int t, int pid, CodigoError codigo) {}
+
+    private final List<ErrorProvocado> errores = new ArrayList<>();
+    private int erroresAplicados;                               // errores provocados ya repetidos en el kernel actual
     private final RegistroProcesos registro = new RegistroProcesos();   // [P16] Gantt, bitácora y métricas
     private final RegistroES registroES = new RegistroES();             // [E1][I3] servicios de E/S e interrupciones
     private int aplicados;                                      // ingresos ya hechos en el kernel actual
@@ -98,6 +108,7 @@ public class SesionSimulacion {
         pidBase = procesos.stream().mapToInt(p -> p.pid).max().orElse(0);
         creador = nuevoCreador();
         aplicados = 0;
+        erroresAplicados = 0;
         return k;
     }
 
@@ -175,6 +186,12 @@ public class SesionSimulacion {
      * pasada cambiaría lo que ya ocurrió después.
      */
     public boolean puedeIngresar() { return enVivo(); }
+
+    /** [P9] ¿Se puede provocar un error ahora? En el instante simulado y con un proceso en la CPU. */
+    public boolean puedeProvocarError() { return enVivo() && !vista.cpu().libre() && !terminada(); }
+
+    /** [P9] Errores provocados en esta sesión, en orden (se repiten al volver a simular). */
+    public List<ErrorProvocado> erroresProvocados() { return Collections.unmodifiableList(errores); }
 
     /** ¿Se puede avanzar desde la foto mirada? */
     public boolean puedeAvanzar() { return !enVivo() || (!terminada() && !atascada); }
@@ -279,7 +296,7 @@ public class SesionSimulacion {
             reconstruirCreador();                               // el creador vuelve a como estaba
             throw e;
         }
-        ingresos.subList(aplicados, ingresos.size()).clear();  // lo no repetido aún era otro futuro: se descarta
+        descartarFuturo();
         ingresos.add(ingreso);
         aplicados++;
         kernel.ingresar(nuevos);
@@ -291,6 +308,36 @@ public class SesionSimulacion {
         vista = kernel.instantanea();
         avisar();
         return nuevos.stream().map(p -> p.pid).toList();
+    }
+
+    // ---------------------------------------------------------------- error provocado (P9)
+
+    /**
+     * [P9] Inyección manual para la demo: el proceso que tiene la CPU falla al ejecutar su próxima
+     * instrucción con el código dado (E01, E02 o E03). La excepción ocurre en el próximo tick en que
+     * use la CPU y la rutina de servicio lo aborta con ese código.
+     *
+     * @return el PID del proceso que fallará
+     */
+    public int provocarError(CodigoError codigo) {
+        if (!enVivo())
+            throw new EventoInvalidoException("Para provocar un error vuelve al instante simulado (t = " + kernel.t() + ")");
+        int pid = kernel.provocarError(codigo).pid;              // valida: CPU ocupada, código E01–E03
+        descartarFuturo();
+        errores.add(new ErrorProvocado(kernel.t(), pid, codigo));
+        erroresAplicados++;
+        maximoAlcanzado = kernel.t();                           // el futuro cambia: la línea llega hasta aquí
+        atascada = false;
+        ticksSinProgreso = 0;
+        vista = kernel.instantanea();
+        avisar();
+        return pid;
+    }
+
+    /** Lo hecho a mano y aún no repetido era otro futuro (se volvió atrás y se actuó): se descarta. */
+    private void descartarFuturo() {
+        ingresos.subList(aplicados, ingresos.size()).clear();
+        errores.subList(erroresAplicados, errores.size()).clear();
     }
 
     private List<Pcb> crear(Ingreso i) {
@@ -306,11 +353,18 @@ public class SesionSimulacion {
         for (int i = 0; i < aplicados; i++) crear(ingresos.get(i));
     }
 
-    /** Repite los ingresos que tocan hasta el instante del kernel (al volver a simular). */
+    /** Repite los ingresos y los errores provocados que tocan hasta el instante del kernel (al volver a simular). */
     private void aplicarPendientes() {
         while (aplicados < ingresos.size() && ingresos.get(aplicados).t() <= kernel.t()) {
             kernel.ingresar(crear(ingresos.get(aplicados)));
             aplicados++;
+        }
+        while (erroresAplicados < errores.size() && errores.get(erroresAplicados).t() <= kernel.t()) {
+            ErrorProvocado e = errores.get(erroresAplicados);
+            Pcb p = kernel.provocarError(e.codigo());              // misma simulación ⇒ mismo proceso en la CPU
+            if (p.pid != e.pid())
+                throw new EventoInvalidoException("Al repetir el error de t = " + e.t() + " la CPU tiene a " + p + " y no a P" + e.pid());
+            erroresAplicados++;
         }
     }
 
@@ -324,6 +378,7 @@ public class SesionSimulacion {
     /** Vuelve a t = 0 con la misma máquina y una carga nueva igual a la original (sin los ingresos). */
     public void reiniciar() {
         ingresos.clear();
+        errores.clear();
         kernel = crearKernel();
         registro.registrar(kernel.instantanea());
         registroES.registrar(kernel.instantanea());

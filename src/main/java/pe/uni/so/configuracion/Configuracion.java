@@ -14,6 +14,7 @@ import pe.uni.so.memoria.EstrategiaAsignacion;
 import pe.uni.so.memoria.GestorMemoria;
 import pe.uni.so.memoria.Reemplazo;
 import pe.uni.so.motor.Kernel;
+import pe.uni.so.procesos.ModuloErrores;
 import pe.uni.so.planificacion.Fcfs;
 import pe.uni.so.planificacion.PlanificadorLargoPlazo;
 import pe.uni.so.planificacion.PoliticaPlanificacion;
@@ -271,6 +272,8 @@ public record Configuracion(Ram ram, Pagina pagina, Cpu cpu,
         List<String> errores = problemas(procesos);
         if (!errores.isEmpty()) throw new ParametroInvalidoException("No se puede iniciar la máquina: " + String.join("; ", errores));
         PlanificadorLargoPlazo largoPlazo = new PlanificadorLargoPlazo(crearGestorMemoria(), grado);
-        return new Kernel(crearPolitica(), procesos, largoPlazo, costoDespacho, cpu.instruccionesPorTick, dispositivos);
+        Kernel k = new Kernel(crearPolitica(), procesos, largoPlazo, costoDespacho, cpu.instruccionesPorTick, dispositivos);
+        k.activarErrores(new ModuloErrores(semilla));      // [P10] el 0,5 % del acumulado falla (ecuación 7)
+        return k;
     }
 }

@@ -47,10 +47,11 @@ class VistaESInterrupcionesTest {
         TablaVectores.Fila fallo = TablaVectores.de(TipoInterrupcion.FALLO_PAGINA);
         assertTrue(fallo.sincrona());
         assertEquals(0, fallo.prioridad());
-        assertEquals(7, f.stream().filter(TablaVectores.Fila::generada).count());          // 5 dispositivos (PIC) + TIMER + int 0x80
+        assertEquals(10, f.stream().filter(TablaVectores.Fila::generada).count());         // 5 dispositivos (PIC) + TIMER + int 0x80 + 3 excepciones (P9)
         assertTrue(timer.generada());
         assertTrue(TablaVectores.de(TipoInterrupcion.LLAMADA_SISTEMA).generada());          // cada pedido de E/S (momento a)
-        assertFalse(TablaVectores.de(TipoInterrupcion.DIVISION_CERO).generada());
+        assertTrue(TablaVectores.de(TipoInterrupcion.DIVISION_CERO).generada());           // [P9] módulo de errores (E02)
+        assertFalse(fallo.generada());                                                      // solo con accesos manuales
         assertTrue(f.stream().allMatch(x -> !x.rutina().isBlank()));
     }
 

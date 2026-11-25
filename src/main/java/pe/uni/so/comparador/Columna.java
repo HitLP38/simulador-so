@@ -24,12 +24,13 @@ public enum Columna {
     FRAG_INTERNA("Frag. interna media (KiB)", 2, true, Resultado.Serie.MEMORIA, Resultado::fragInternaMediaKib),
     ESPERARON_MEMORIA("Esperaron memoria", 0, true, Resultado.Serie.MEMORIA, r -> r.esperaronMemoria()),
     ESPERA_MEMORIA("Espera por memoria (media)", 2, true, Resultado.Serie.MEMORIA, Resultado::esperaMemoriaMedia),
+    CON_ERROR("Con error", 0, true, null, r -> r.conError()),
     MILISEGUNDOS("Tiempo real (ms)", 0, true, null, r -> r.milisegundos());
 
     public final String etiqueta;
     public final int decimales;
     public final boolean menorEsMejor;
-    /** Serie en la que se marca la mejor celda; null = en ambas. Tiempo real no se marca. */
+    /** Serie en la que se marca la mejor celda; null = en ambas. Tiempo real y «Con error» no se marcan. */
     public final Resultado.Serie serie;
     private final ToDoubleFunction<Resultado> valor;
 
@@ -44,7 +45,13 @@ public enum Columna {
     public double valor(Resultado r) { return valor.applyAsDouble(r); }
 
     /** ¿Se marca la mejor celda de esta columna en la serie dada? */
-    public boolean seCompara(Resultado.Serie s) { return this != MILISEGUNDOS && (serie == null || serie == s); }
+    public boolean seCompara(Resultado.Serie s) { return comparable() && (serie == null || serie == s); }
+
+    /**
+     * ¿Tiene sentido marcar la mejor celda? El tiempo real depende de la computadora y «Con error» es el mismo
+     * en todas las corridas (el módulo de errores elige por la carga, no por la configuración).
+     */
+    public boolean comparable() { return this != MILISEGUNDOS && this != CON_ERROR; }
 
     /**
      * El mejor valor de la columna entre las corridas completas de la serie, o NaN si no hay

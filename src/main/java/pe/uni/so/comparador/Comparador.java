@@ -118,7 +118,7 @@ public final class Comparador {
     private static long ms(long inicio) { return (System.nanoTime() - inicio) / 1_000_000; }
 
     private static Resultado vacio(Resultado.Serie serie, String politica, String estrategia, int procesos, long ms, String nota) {
-        return new Resultado(serie, politica, estrategia, procesos, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ms, nota);
+        return new Resultado(serie, politica, estrategia, procesos, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ms, nota);
     }
 
     private static Resultado medir(Resultado.Serie serie, String politica, String estrategia, Kernel k, long ms, String nota) {
@@ -144,7 +144,7 @@ public final class Comparador {
         long ticksEnNuevo = porMemoria.values().stream().mapToLong(Integer::longValue).sum();
         double esperaMemoria = esperaron == 0 ? 0 : (double) ticksEnNuevo / esperaron;
 
-        return new Resultado(serie, politica, estrategia, todos.size(), terminados.size(), t,
+        return new Resultado(serie, politica, estrategia, todos.size(), terminados.size(), k.abortados(), t,
                 Metricas.esperaMedia(terminados), Metricas.respuestaMedia(terminados), Metricas.retornoMedio(terminados),
                 uso, throughput, k.despachador().despachos(), k.desalojos(), k.finesDeQuantum(), comparaciones, externa, externaMax,
                 interna, esperaron, esperaMemoria, ms, nota);
