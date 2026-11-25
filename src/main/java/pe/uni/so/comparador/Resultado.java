@@ -25,6 +25,7 @@ package pe.uni.so.comparador;
  * @param fragInternaMediaKib desperdicio dentro de las páginas asignadas, promedio por tick (KiB)
  * @param esperaronMemoria    procesos que no pudieron entrar al menos un tick por falta de memoria (no por el grado)
  * @param esperaMemoriaMedia  ticks sin entrar por falta de memoria de los que esperaron, promedio
+ * @param fallosPagina        [E7][M1] fallos de página (0x0E): bajo demanda, al cargar el búfer de cada E/S por DMA
  * @param milisegundos        lo que tardó la corrida en la computadora real
  * @param nota                vacía si terminó bien; si no, por qué se detuvo
  */
@@ -32,7 +33,7 @@ public record Resultado(Serie serie, String politica, String estrategia, int pro
                         double esperaMedia, double respuestaMedia, double retornoMedio, double usoCpu, double throughput,
                         int cambiosContexto, int expropiaciones, int finesQuantum, long comparaciones, double fragExternaMedia,
                         int fragExternaMaxima, double fragInternaMediaKib, int esperaronMemoria, double esperaMemoriaMedia,
-                        long milisegundos, String nota) {
+                        int fallosPagina, long milisegundos, String nota) {
 
     /** Qué se varía en la fila. */
     public enum Serie {

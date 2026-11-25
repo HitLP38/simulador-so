@@ -51,6 +51,7 @@ public final class RegistroES {
     private final List<EventoInterrupcion> eventos = new ArrayList<>();
     private Instantanea.Pic picAnterior;
     private int llamadasAnterior;                                                                // int 0x80 acumuladas en la foto previa
+    private int fallosAnterior;                                                                  // [E7] fallos de página en la foto previa
     private int ultimoT = -1;
 
     public void reiniciar() {
@@ -60,6 +61,7 @@ public final class RegistroES {
         eventos.clear();
         picAnterior = null;
         llamadasAnterior = 0;
+        fallosAnterior = 0;
         ultimoT = -1;
     }
 
@@ -114,6 +116,15 @@ public final class RegistroES {
                 eventos.add(new EventoInterrupcion(t, TipoInterrupcion.LLAMADA_SISTEMA, Accion.ATENDIDA, llamadas));
             }
             llamadasAnterior = f.cpu().llamadasSistema();
+        }
+        // [E7][M1] Fallo de página (0x0E): síncrono; bajo demanda lo provoca la DMA de una E/S (o un acceso manual).
+        if (f.memoria() != null) {
+            int fallos = f.memoria().fallosPagina() - fallosAnterior;
+            if (fallos > 0) {
+                eventos.add(new EventoInterrupcion(t, TipoInterrupcion.FALLO_PAGINA, Accion.LEVANTADA, fallos));
+                eventos.add(new EventoInterrupcion(t, TipoInterrupcion.FALLO_PAGINA, Accion.ATENDIDA, fallos));
+            }
+            fallosAnterior = f.memoria().fallosPagina();
         }
         // [P9] Excepciones (0x00, 0x06, 0x0D): síncronas como la int 0x80, la instrucción las provoca y la rutina
         // de servicio aborta al proceso en el mismo tick. Se ven en los procesos que pasan a Terminado con E01–E03.

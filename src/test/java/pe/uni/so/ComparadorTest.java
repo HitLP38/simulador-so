@@ -217,7 +217,7 @@ class ComparadorTest {
 
     private static Resultado fila(Resultado.Serie serie, String nombre, double espera, long comparaciones, String nota) {
         return new Resultado(serie, nombre, nombre, 5, nota.isEmpty() ? 5 : 2, 0, 100, espera, 1, 2, 50, 1, 3, 4, 0, comparaciones,
-                0, 0, 0, 0, 0, 10, nota);
+                0, 0, 0, 0, 0, 0, 10, nota);
     }
 
     @Test @DisplayName("[G1] Mejor celda: por serie, solo entre corridas completas y solo si el ganador es único")

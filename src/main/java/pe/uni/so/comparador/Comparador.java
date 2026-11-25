@@ -118,7 +118,7 @@ public final class Comparador {
     private static long ms(long inicio) { return (System.nanoTime() - inicio) / 1_000_000; }
 
     private static Resultado vacio(Resultado.Serie serie, String politica, String estrategia, int procesos, long ms, String nota) {
-        return new Resultado(serie, politica, estrategia, procesos, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ms, nota);
+        return new Resultado(serie, politica, estrategia, procesos, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ms, nota);
     }
 
     private static Resultado medir(Resultado.Serie serie, String politica, String estrategia, Kernel k, long ms, String nota) {
@@ -129,8 +129,8 @@ public final class Comparador {
         double uso = t == 0 ? 0 : 100.0 * ocupados / t;
         double throughput = t == 0 ? 0 : 100.0 * Metricas.throughput(terminados, t);
 
-        // [M8] Memoria: comparaciones de búsqueda, fragmentación por tick y espera en Nuevo. Los fallos de página no
-        // se comparan: en la corrida automática nadie accede a memoria (solo los accesos manuales los provocan).
+        // [M8] Memoria: comparaciones de búsqueda, fragmentación por tick, espera por memoria y fallos de página. Los
+        // fallos solo aparecen bajo demanda: en la corrida automática los provoca la DMA de cada E/S (E7).
         GestorMemoria gm = k.memoria().orElse(null);
         long comparaciones = gm == null ? 0 : gm.comparaciones();
         List<GestorMemoria.Muestra> muestras = k.historialMemoria();
@@ -147,6 +147,6 @@ public final class Comparador {
         return new Resultado(serie, politica, estrategia, todos.size(), terminados.size(), k.abortados(), t,
                 Metricas.esperaMedia(terminados), Metricas.respuestaMedia(terminados), Metricas.retornoMedio(terminados),
                 uso, throughput, k.despachador().despachos(), k.desalojos(), k.finesDeQuantum(), comparaciones, externa, externaMax,
-                interna, esperaron, esperaMemoria, ms, nota);
+                interna, esperaron, esperaMemoria, gm == null ? 0 : gm.fallosPagina(), ms, nota);
     }
 }
