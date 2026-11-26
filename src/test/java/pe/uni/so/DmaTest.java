@@ -120,4 +120,48 @@ class DmaTest {
         s.hastaElFinal();
         assertEquals(20, s.registroES().atendidas(pe.uni.so.interrupciones.TipoInterrupcion.FALLO_PAGINA, s.vista().t()));
     }
+
+    /** Corre hasta que P2 tiene la CPU, le hace pedir la E/S dada y devuelve el detalle del cierre de esa E/S. */
+    private static String cierreDePedidoManual(Kernel k, java.util.function.LongFunction<SolicitudES> pedido) {
+        Pcb p2 = k.procesos().stream().filter(x -> x.pid == 2).findFirst().orElseThrow();
+        while (k.instantanea().cpu().enCpu() != 2) k.paso();
+        k.llamadaSistema(pedido.apply(p2.espacio().base(EspacioProceso.Segmento.DATOS)));
+        while (true) {
+            k.paso();
+            for (Instantanea.Suceso s : k.instantanea().sucesos())
+                if (s.pid() == 2 && s.momento() == Momento.C) return s.detalle();
+        }
+    }
+
+    @Test @DisplayName("[E7] Rango: solo la intersección de la solicitud con el segmento de datos (nada si no se cruzan)")
+    void interseccion() {
+        Kernel k = BASE.crearKernel(PlanCarga.loteOficial().procesos(BASE.pagina().bytes));
+        String antes = cierreDePedidoManual(k, base -> new SolicitudES(2, pe.uni.so.es.Dispositivo.DISCO, SolicitudES.Operacion.LEER,
+                (int) base - 100, 512, 3));
+        assertTrue(antes.contains("DMA: 412 B del dispositivo al búfer"), antes);   // 100 B quedan antes del segmento
+
+        Kernel fuera = BASE.crearKernel(PlanCarga.loteOficial().procesos(BASE.pagina().bytes));
+        int lecturas = fuera.dmaLecturas();
+        String nada = cierreDePedidoManual(fuera, base -> new SolicitudES(2, pe.uni.so.es.Dispositivo.DISCO, SolicitudES.Operacion.LEER,
+                (int) base - 1000, 512, 3));
+        assertFalse(nada.contains("DMA"), nada);
+        assertEquals(lecturas, fuera.dmaLecturas());
+    }
+
+    @Test @DisplayName("[E7] Un búfer que cruza de página se copia por tramos de una página: la E/S se cierra (momento c) y ambas páginas quedan cargadas")
+    void cruzaDePagina() {
+        Configuracion demanda = conCarga(Carga.BAJO_DEMANDA);
+        Kernel k = demanda.crearKernel(PlanCarga.loteOficial().procesos(demanda.pagina().bytes));
+        long bloque = demanda.pagina().bytes;
+        String d = cierreDePedidoManual(k, base -> new SolicitudES(2, pe.uni.so.es.Dispositivo.DISCO, SolicitudES.Operacion.LEER,
+                (int) (base + 2 * bloque - 256), 512, 3));
+        assertTrue(d.contains("DMA: 512 B") && d.contains("2 fallos de página"), d);
+        Pcb p2 = k.procesos().stream().filter(x -> x.pid == 2).findFirst().orElseThrow();
+        long pagina = (p2.espacio().base(EspacioProceso.Segmento.DATOS) + 2 * bloque) / bloque;
+        for (long pg : new long[]{pagina - 1, pagina}) {
+            GestorMemoria.TramoPaginas t = k.instantanea().memoria().procesos().get(2).tabla().stream()
+                    .filter(x -> x.paginaInicial() <= pg && pg <= x.paginaFinal()).findFirst().orElseThrow();
+            assertTrue(t.valida() && t.modificada(), "página " + pg);
+        }
+    }
 }

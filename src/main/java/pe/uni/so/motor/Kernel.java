@@ -20,6 +20,7 @@ import pe.uni.so.es.SolicitudES;
 import pe.uni.so.es.VelocidadDispositivo;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
+import pe.uni.so.excepciones.SimuladorException;
 import pe.uni.so.interrupciones.ControladorInterrupciones;
 import pe.uni.so.interrupciones.TipoInterrupcion;
 import pe.uni.so.memoria.EspacioProceso;
@@ -414,9 +415,13 @@ public class Kernel {
      * [E7] Carga/descarga de la región de memoria del pedido, por DMA, al cerrarse la E/S: una lectura
      * escribe los datos del dispositivo en el búfer del proceso (sus páginas quedan con R y M) y una
      * escritura copia el búfer al dispositivo (quedan con R). El acceso pasa por la MMU: bajo demanda,
-     * si la página del búfer no tiene marco hay un fallo de página (0x0E) y se carga antes de copiar.
-     * La transferencia se ajusta al segmento de datos del proceso. Sin gestor de memoria, o si el
-     * pedido es manual (sin búfer) o el proceso no está residente, no hay región que cargar.
+     * si una página del búfer no tiene marco hay un fallo de página (0x0E) y se carga antes de copiar.
+     *
+     * <p>Se transfiere solo la intersección de la solicitud con el segmento de datos, de a una página
+     * por vez (cada tramo cabe en cualquier cuota ≥ 1 marco; con reemplazo local, un tramo puede
+     * expulsar al anterior). La DMA nunca deja la E/S a medias: si aun así fallara, el pedido se cierra
+     * igual (el EOI se envía) y el motivo queda en la bitácora. Sin gestor de memoria, sin solicitud o
+     * con el proceso no residente no hay región que cargar.
      *
      * @return el detalle para la bitácora (vacío si no hubo transferencia)
      */
@@ -425,14 +430,25 @@ public class Kernel {
         if (gm == null || s == null || p.espacio() == null || !largoPlazo.residente(p)) return "";
         EspacioProceso e = p.espacio();
         long base = e.base(EspacioProceso.Segmento.DATOS), tam = e.tamano(EspacioProceso.Segmento.DATOS);
-        long desde = Math.max(s.bufer(), base);
-        int bytes = (int) Math.min(s.bytes(), base + tam - desde);
-        if (bytes <= 0) return "";
+        long desde = Math.max(s.bufer(), base);                                  // intersección inclusiva
+        long hasta = Math.min(s.bufer() + (long) s.bytes() - 1, base + tam - 1);   // de la solicitud y el segmento
+        if (tam <= 0 || hasta < desde) return "";
         boolean lectura = s.operacion() == SolicitudES.Operacion.LEER;
         int fallos = gm.fallosPagina();
-        gm.acceder(p.pid, desde, bytes, lectura);             // la lectura escribe en memoria (M); la escritura solo la lee (R)
+        long bloque = gm.mmu().bloque();
+        try {
+            for (long d = desde; d <= hasta; ) {
+                long finPagina = (d / bloque + 1) * bloque - 1;                  // un tramo por página
+                long f = Math.min(hasta, finPagina);
+                gm.acceder(p.pid, d, (int) (f - d + 1), lectura);              // lectura: escribe en memoria (M); escritura: solo R
+                d = f + 1;
+            }
+        } catch (SimuladorException ex) {
+            return " (DMA no realizada: " + ex.getMessage() + ")";
+        }
         fallos = gm.fallosPagina() - fallos;
         if (lectura) dmaLecturas++; else dmaEscrituras++;
+        long bytes = hasta - desde + 1;
         String bufer = String.format("búfer 0x%X", desde);
         String fallo = fallos == 0 ? "" : "; " + fallos + (fallos == 1 ? " fallo de página" : " fallos de página");
         return " (DMA: " + bytes + " B " + (lectura ? "del dispositivo al " + bufer : "del " + bufer + " al dispositivo") + fallo + ")";
