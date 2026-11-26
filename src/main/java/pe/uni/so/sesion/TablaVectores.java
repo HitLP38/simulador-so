@@ -23,7 +23,8 @@ public final class TablaVectores {
      * @param generada  ¿la simulación la produce? Los fines de E/S pasan por el PIC; el TIMER se registra en cada
      *                  fin de quantum (el kernel lo resuelve sin IRQ); la int 0x80 en cada pedido de E/S (momento a,
      *                  la cuenta la CPU); las excepciones 0x00, 0x06 y 0x0D, en cada proceso que el módulo de errores aborta
-     *                  (P9); el fallo de página solo con los accesos manuales a memoria
+     *                  (P9); el fallo de página bajo demanda, cuando la DMA de una E/S (E7) o un acceso manual toca una
+     *                  página sin marco
      */
     public record Fila(TipoInterrupcion tipo, int vector, TipoInterrupcion.Clase clase, int irq, int prioridad,
                        Dispositivo dispositivo, String rutina, boolean generada) {
@@ -61,11 +62,11 @@ public final class TablaVectores {
     }
 
     /**
-     * Fines de E/S (dispositivo), TIMER (fin de quantum), int 0x80 (pedido de E/S) y las excepciones del módulo de
-     * errores (E01–E03): las que produce la simulación.
+     * Fines de E/S (dispositivo), TIMER (fin de quantum), int 0x80 (pedido de E/S), las excepciones del módulo de
+     * errores (E01–E03) y el fallo de página (bajo demanda, por la DMA de la E/S): las que produce la simulación.
      */
     private static boolean generada(TipoInterrupcion t, Dispositivo d) {
-        if (d != null || t == TipoInterrupcion.TIMER || t == TipoInterrupcion.LLAMADA_SISTEMA) return true;
+        if (d != null || t == TipoInterrupcion.TIMER || t == TipoInterrupcion.LLAMADA_SISTEMA || t == TipoInterrupcion.FALLO_PAGINA) return true;
         for (CodigoError c : CodigoError.DE_EXCEPCION) if (c.excepcion == t) return true;
         return false;
     }

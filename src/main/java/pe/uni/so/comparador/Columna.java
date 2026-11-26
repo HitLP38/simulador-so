@@ -24,6 +24,7 @@ public enum Columna {
     FRAG_INTERNA("Frag. interna media (KiB)", 2, true, Resultado.Serie.MEMORIA, Resultado::fragInternaMediaKib),
     ESPERARON_MEMORIA("Esperaron memoria", 0, true, Resultado.Serie.MEMORIA, r -> r.esperaronMemoria()),
     ESPERA_MEMORIA("Espera por memoria (media)", 2, true, Resultado.Serie.MEMORIA, Resultado::esperaMemoriaMedia),
+    FALLOS_PAGINA("Fallos de página", 0, true, null, r -> r.fallosPagina()),
     CON_ERROR("Con error", 0, true, null, r -> r.conError()),
     MILISEGUNDOS("Tiempo real (ms)", 0, true, null, r -> r.milisegundos());
 

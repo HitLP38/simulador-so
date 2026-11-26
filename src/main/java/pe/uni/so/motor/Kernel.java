@@ -20,6 +20,7 @@ import pe.uni.so.es.SolicitudES;
 import pe.uni.so.es.VelocidadDispositivo;
 import pe.uni.so.excepciones.EventoInvalidoException;
 import pe.uni.so.excepciones.ParametroInvalidoException;
+import pe.uni.so.excepciones.SimuladorException;
 import pe.uni.so.interrupciones.ControladorInterrupciones;
 import pe.uni.so.interrupciones.TipoInterrupcion;
 import pe.uni.so.memoria.EspacioProceso;
@@ -100,6 +101,7 @@ public class Kernel {
     private boolean conFotos = true;                       // [P17][M8] el comparador las apaga para correr rápido
     private int llamadasSistema;                           // [E2][P16] int 0x80 acumuladas, para la bitácora
     private int finesQuantum;                              // [P17] interrupciones del TIMER por fin de quantum, acumuladas
+    private int dmaLecturas, dmaEscrituras;                // [E7] transferencias por DMA al cerrar la E/S
     private ModuloErrores moduloErrores;                   // [P9][P10] null: ningún proceso falla solo
     private final Map<TipoInterrupcion, Integer> excepciones = new EnumMap<>(TipoInterrupcion.class);   // [P9] por vector
     private int inicioTick;                                // primer evento de la bitácora que aún no sale en una foto
@@ -402,11 +404,59 @@ public class Kernel {
         Pcb p = colas.terminarES(d);
         modo = Modo.KERNEL;                                // IRQ del dispositivo
         p.completarPedidoES();
+        String dma = transferir(p, gestorES.solicitud(p));      // [E7] antes de cerrar el pedido (completar lo borra)
         gestorES.completar(p);
-        registrar(t, Momento.C, p, "IRQ " + ControladorInterrupciones.irq(d.interrupcion) + ": terminó su E/S en " + d + " y pasa a Listo"
+        registrar(t, Momento.C, p, "IRQ " + ControladorInterrupciones.irq(d.interrupcion) + ": terminó su E/S en " + d + dma + " y pasa a Listo"
                 + (p.cancelacionPendiente() ? " con la señal CANCELAR pendiente" : ""));
         revisarExpropiacion = true;
     }
+
+    /**
+     * [E7] Carga/descarga de la región de memoria del pedido, por DMA, al cerrarse la E/S: una lectura
+     * escribe los datos del dispositivo en el búfer del proceso (sus páginas quedan con R y M) y una
+     * escritura copia el búfer al dispositivo (quedan con R). El acceso pasa por la MMU: bajo demanda,
+     * si una página del búfer no tiene marco hay un fallo de página (0x0E) y se carga antes de copiar.
+     *
+     * <p>Se transfiere solo la intersección de la solicitud con el segmento de datos, de a una página
+     * por vez (cada tramo cabe en cualquier cuota ≥ 1 marco; con reemplazo local, un tramo puede
+     * expulsar al anterior). La DMA nunca deja la E/S a medias: si aun así fallara, el pedido se cierra
+     * igual (el EOI se envía) y el motivo queda en la bitácora. Sin gestor de memoria, sin solicitud o
+     * con el proceso no residente no hay región que cargar.
+     *
+     * @return el detalle para la bitácora (vacío si no hubo transferencia)
+     */
+    private String transferir(Pcb p, SolicitudES s) {
+        GestorMemoria gm = gestorMemoriaOpcional();
+        if (gm == null || s == null || p.espacio() == null || !largoPlazo.residente(p)) return "";
+        EspacioProceso e = p.espacio();
+        long base = e.base(EspacioProceso.Segmento.DATOS), tam = e.tamano(EspacioProceso.Segmento.DATOS);
+        long desde = Math.max(s.bufer(), base);                                  // intersección inclusiva
+        long hasta = Math.min(s.bufer() + (long) s.bytes() - 1, base + tam - 1);   // de la solicitud y el segmento
+        if (tam <= 0 || hasta < desde) return "";
+        boolean lectura = s.operacion() == SolicitudES.Operacion.LEER;
+        int fallos = gm.fallosPagina();
+        long bloque = gm.mmu().bloque();
+        try {
+            for (long d = desde; d <= hasta; ) {
+                long finPagina = (d / bloque + 1) * bloque - 1;                  // un tramo por página
+                long f = Math.min(hasta, finPagina);
+                gm.acceder(p.pid, d, (int) (f - d + 1), lectura);              // lectura: escribe en memoria (M); escritura: solo R
+                d = f + 1;
+            }
+        } catch (SimuladorException ex) {
+            return " (DMA no realizada: " + ex.getMessage() + ")";
+        }
+        fallos = gm.fallosPagina() - fallos;
+        if (lectura) dmaLecturas++; else dmaEscrituras++;
+        long bytes = hasta - desde + 1;
+        String bufer = String.format("búfer 0x%X", desde);
+        String fallo = fallos == 0 ? "" : "; " + fallos + (fallos == 1 ? " fallo de página" : " fallos de página");
+        return " (DMA: " + bytes + " B " + (lectura ? "del dispositivo al " + bufer : "del " + bufer + " al dispositivo") + fallo + ")";
+    }
+
+    /** [E7] Transferencias DMA hechas al cerrar pedidos de E/S: lecturas (dispositivo → búfer) y escrituras. */
+    public int dmaLecturas() { return dmaLecturas; }
+    public int dmaEscrituras() { return dmaEscrituras; }
 
     /** (d) Llegadas del instante t. Si hay largo plazo y no cabe, espera en Nuevo sin adelantarse. */
     private void momentoD() {
