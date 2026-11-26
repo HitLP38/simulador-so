@@ -3,6 +3,7 @@ package pe.uni.so;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -20,6 +21,7 @@ import pe.uni.so.motor.Kernel;
 import pe.uni.so.motor.Momento;
 import pe.uni.so.procesos.Pcb;
 import pe.uni.so.sesion.PlanCarga;
+import pe.uni.so.sesion.SesionSimulacion;
 
 /** [E7] Carga/descarga de la región de memoria de cada E/S por DMA: bits R y M, fallos de página y bitácora. */
 class DmaTest {
@@ -115,7 +117,7 @@ class DmaTest {
 
     @Test @DisplayName("[E7][I3] Bajo demanda, cada fallo de página aparece en la bitácora de interrupciones (0x0E levantada y atendida)")
     void bitacoraDeInterrupciones() {
-        pe.uni.so.sesion.SesionSimulacion s = new pe.uni.so.sesion.SesionSimulacion(
+        SesionSimulacion s = new SesionSimulacion(
                 new pe.uni.so.configuracion.Maquina("Bajo demanda", conCarga(Carga.BAJO_DEMANDA)));
         s.hastaElFinal();
         assertEquals(20, s.registroES().atendidas(pe.uni.so.interrupciones.TipoInterrupcion.FALLO_PAGINA, s.vista().t()));
@@ -124,9 +126,17 @@ class DmaTest {
     /** Corre hasta que P2 tiene la CPU, le hace pedir la E/S dada y devuelve el detalle del cierre de esa E/S. */
     private static String cierreDePedidoManual(Kernel k, java.util.function.LongFunction<SolicitudES> pedido) {
         Pcb p2 = k.procesos().stream().filter(x -> x.pid == 2).findFirst().orElseThrow();
-        while (k.instantanea().cpu().enCpu() != 2) k.paso();
+        int limiteCpu = k.t() + SesionSimulacion.LIMITE_TICKS;              // sin bucles infinitos si algo se rompe
+        while (k.instantanea().cpu().enCpu() != 2) {
+            if (k.t() >= limiteCpu) fail("P2 no obtuvo la CPU en " + SesionSimulacion.LIMITE_TICKS + " ticks (t = " + k.t() + ")");
+            k.paso();
+        }
         k.llamadaSistema(pedido.apply(p2.espacio().base(EspacioProceso.Segmento.DATOS)));
+        int limiteCierre = k.t() + SesionSimulacion.LIMITE_TICKS;
         while (true) {
+            if (k.t() >= limiteCierre)
+                fail("Sin cierre de E/S de P2 tras " + SesionSimulacion.LIMITE_TICKS + " ticks (t = " + k.t() + ", estado " + p2.estado()
+                        + ", disco: " + k.instantanea().dispositivos() + ")");
             k.paso();
             for (Instantanea.Suceso s : k.instantanea().sucesos())
                 if (s.pid() == 2 && s.momento() == Momento.C) return s.detalle();
